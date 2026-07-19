@@ -1,0 +1,38 @@
+.copy-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
+  border: 1px solid var(--line);
+  background: white;
+  padding: 0.55rem 0.8rem;
+  border-radius: 999px;
+  font-size: 0.78rem;
+  letter-spacing: 0.04em;
+  transition: 0.2s ease;
+}
+.copy-chip:hover {
+  border-color: var(--ink);
+  transform: translateY(-1px);
+}
+.copy-chip.copied {
+  background: var(--ink);
+  color: white;
+  border-color: var(--ink);
+}
+.confirmation-card .copy-chip,
+.account-order .copy-chip {
+  margin-top: 0.35rem;
+}
+a.table-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border: 1px solid var(--line);
+  background: white;
+  border-radius: 6px;
+}
+a.table-icon:hover {
+  border-color: var(--ink);
+}

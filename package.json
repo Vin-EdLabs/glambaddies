@@ -1,0 +1,16 @@
+{
+  "name": "vublishop",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "install:all": "npm install --prefix frontend && npm install --prefix backend",
+    "db": "npm run db --prefix backend",
+    "dev": "concurrently -n db,api,web -c magenta,green,blue \"npm run db --prefix backend\" \"npm run dev --prefix backend\" \"npm run dev --prefix frontend\"",
+    "build": "npm run build --prefix frontend",
+    "lint": "npm run lint --prefix frontend && npm run lint --prefix backend",
+    "test": "npm test --prefix backend"
+  },
+  "devDependencies": {
+    "concurrently": "^9.2.1"
+  }
+}
