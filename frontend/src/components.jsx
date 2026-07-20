@@ -1,10 +1,10 @@
 import { useEffect, useState } from 'react'
 import { Link, Navigate, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import toast from 'react-hot-toast'
-import { ArrowRight, BarChart3, Box, Check, ChevronDown, Copy, Heart, LayoutDashboard, LogOut, Menu, Minus, Package, Plus, Search, Settings, ShoppingBag, Tag, Trash2, User, Users, X } from 'lucide-react'
+import { ArrowRight, BarChart3, Box, Check, ChevronDown, Copy, Heart, LayoutDashboard, LogOut, Mail, Menu, Minus, Package, Plus, Search, Settings, ShoppingBag, Tag, Trash2, User, Users, X } from 'lucide-react'
 import { useAuth, useCart } from './contexts'
 import { formatCurrency } from './utils'
-import api, { asArray } from './services/api'
+import api, { asArray, errorMessage } from './services/api'
 import { ADMIN_PATH } from './adminPath'
 
 export function CopyValue({ value, label = 'Copy' }) {
@@ -130,6 +130,8 @@ function CartDrawer() {
 
 export function StoreLayout() {
   const [menu, setMenu] = useState(false)
+  const [newsletterEmail, setNewsletterEmail] = useState('')
+  const [newsletterBusy, setNewsletterBusy] = useState(false)
   const { count, setIsOpen } = useCart()
   const { customer } = useAuth()
   const location = useLocation()
@@ -140,7 +142,7 @@ export function StoreLayout() {
       .then(({ data }) => setCategories(asArray(data?.categories)))
       .catch(() => setCategories([]))
   }, [])
-  const CATEGORY_ORDER = ['fashion', 'electronics', 'games', 'home-living', 'beauty', 'sports']
+  const CATEGORY_ORDER = ['fashion', 'electronics', 'games', 'home-living', 'beauty', 'food', 'sports']
   const orderedCategories = asArray(categories).slice().sort((a, b) => {
     const ai = CATEGORY_ORDER.indexOf(a.slug)
     const bi = CATEGORY_ORDER.indexOf(b.slug)
@@ -150,6 +152,21 @@ export function StoreLayout() {
     { label: 'New arrivals', to: '/shop', isActive: location.pathname === '/shop' && !category },
     ...orderedCategories.map((item) => ({ label: item.name, to: `/shop?category=${encodeURIComponent(item.slug)}`, isActive: location.pathname === '/shop' && category === item.slug })),
   ]
+  const joinPrivateList = async (event) => {
+    event.preventDefault()
+    const email = newsletterEmail.trim()
+    if (!email || newsletterBusy) return
+    setNewsletterBusy(true)
+    try {
+      const { data } = await api.post('/store/newsletter', { email })
+      toast.success(data.message || 'You’re on the private list')
+      setNewsletterEmail('')
+    } catch (joinError) {
+      toast.error(errorMessage(joinError, 'Could not join the private list'))
+    } finally {
+      setNewsletterBusy(false)
+    }
+  }
   return <div className="store">
     <div className="announcement">Complimentary delivery on orders over $50</div>
     <header className="site-header">
@@ -175,15 +192,15 @@ export function StoreLayout() {
       <div className="header-actions"><Link className={`header-story${location.pathname === '/about' ? ' active' : ''}`} to="/about">Our story</Link><Link className={`header-story${location.pathname === '/track-order' ? ' active' : ''}`} to="/track-order">Track order</Link><Link className="header-search" to="/shop" aria-label="Search"><Search /></Link><Link to={customer ? '/account' : '/login'} aria-label="Account"><User /></Link><button onClick={() => setIsOpen(true)} aria-label="Bag"><ShoppingBag /><span>{count}</span></button></div>
     </header>
     <main key={`${location.pathname}${location.search}`}><Outlet /></main>
-    <footer><div><Link className="logo light" to="/" aria-label="Vublishop home"><img src="/logo.png" alt="Vublishop" /></Link><p>Shop better. Live better. Curated fashion, bags, games and lifestyle.</p></div><div><h4>Client services</h4><Link to="/contact">Contact us</Link><Link to="/track-order">Track order</Link><Link to="/faq">Delivery & returns</Link></div><div><h4>Discover</h4><Link to="/about">Our story</Link><Link to="/shop">New arrivals</Link><Link to="/faq">Care guide</Link></div><div><h4>Private list</h4><p>New collections, considered edits and invitations.</p><form onSubmit={(e) => e.preventDefault()}><input type="email" placeholder="Email address" aria-label="Email address" /><button><ArrowRight /></button></form></div><small>© 2026 VUBLISHOP. Worldwide.</small></footer>
+    <footer><div><Link className="logo light" to="/" aria-label="Vublishop home"><img src="/logo.png" alt="Vublishop" /></Link><p>Shop better. Live better. Curated fashion, bags, games and lifestyle.</p></div><div><h4>Client services</h4><Link to="/contact">Contact us</Link><Link to="/track-order">Track order</Link><Link to="/faq">Delivery & returns</Link></div><div><h4>Discover</h4><Link to="/about">Our story</Link><Link to="/shop">New arrivals</Link><Link to="/faq">Care guide</Link></div><div><h4>Private list</h4><p>New collections, considered edits and invitations.</p><form onSubmit={joinPrivateList}><input type="email" name="email" value={newsletterEmail} onChange={(event) => setNewsletterEmail(event.target.value)} placeholder="Email address" aria-label="Email address" required autoComplete="email" disabled={newsletterBusy} /><button type="submit" aria-label="Join private list" disabled={newsletterBusy}><ArrowRight /></button></form></div><small>© 2026 VUBLISHOP. Worldwide.</small></footer>
     <CartDrawer />
   </div>
 }
 
 const adminNav = [
   ['Overview', ADMIN_PATH, LayoutDashboard], ['Products', `${ADMIN_PATH}/products`, Box], ['Orders', `${ADMIN_PATH}/orders`, Package],
-  ['Categories', `${ADMIN_PATH}/categories`, Tag], ['Customers', `${ADMIN_PATH}/customers`, Users], ['Analytics', `${ADMIN_PATH}/analytics`, BarChart3],
-  ['Settings', `${ADMIN_PATH}/settings`, Settings],
+  ['Categories', `${ADMIN_PATH}/categories`, Tag], ['Customers', `${ADMIN_PATH}/customers`, Users], ['Private list', `${ADMIN_PATH}/private-list`, Mail],
+  ['Analytics', `${ADMIN_PATH}/analytics`, BarChart3], ['Settings', `${ADMIN_PATH}/settings`, Settings],
 ]
 
 export function AdminLayout() {

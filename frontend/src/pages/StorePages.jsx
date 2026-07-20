@@ -22,7 +22,7 @@ function useApi(load, dependencies) {
 
 export function Home() {
   const { data: products, loading, error, retry } = useApi(
-    () => api.get('/products', { params: { limit: 4, sort: 'newest' } }).then(({ data }) => mapProducts(data?.products)), [],
+    () => api.get('/products', { params: { limit: 8, sort: 'newest' } }).then(({ data }) => mapProducts(data?.products)), [],
   )
   const list = asArray(products)
   const edits = [
@@ -54,6 +54,20 @@ export function Home() {
       title: 'Quiet interiors',
       alt: 'Minimal living room interior',
     },
+    {
+      to: '/shop?category=food',
+      image: 'https://images.unsplash.com/photo-1610832958506-aa56368176cf?auto=format&fit=crop&w=1400&q=90',
+      eyebrow: 'Food & Grocery',
+      title: 'Fresh from the market',
+      alt: 'Fresh fruit and grocery produce',
+    },
+    {
+      to: '/shop?category=beauty',
+      image: 'https://images.unsplash.com/photo-1596462502278-27bfdc403348?auto=format&fit=crop&w=1400&q=90',
+      eyebrow: 'Beauty',
+      title: 'Daily rituals',
+      alt: 'Beauty and skincare essentials',
+    },
   ]
   return <>
     <section className="hero-section">
@@ -61,7 +75,7 @@ export function Home() {
       <div className="hero-copy">
         <img className="hero-brand" src="/logo.png" alt="Vublishop" />
         <h1>Shop better.<br /><em>Live better.</em></h1>
-        <p>Premium fashion, bags and games — curated for the way you live.</p>
+        <p>Premium fashion, electronics, games, home, beauty and fresh food — curated for the way you live.</p>
         <Link className="button light-button" to="/shop">Discover the collection <ArrowRight /></Link>
       </div>
     </section>

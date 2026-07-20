@@ -379,15 +379,23 @@
 }
 .editorial-grid {
   display: grid !important;
-  grid-template-columns: 1fr 1fr !important;
+  grid-template-columns: repeat(3, 1fr) !important;
 }
 .editorial-grid > a {
-  height: 520px !important;
+  height: 480px !important;
+}
+@media (max-width: 980px) {
+  .editorial-grid {
+    grid-template-columns: 1fr 1fr !important;
+  }
 }
 @media (max-width: 800px) {
   .store-toggle-card {
     flex-direction: column;
     align-items: flex-start;
+  }
+  .editorial-grid {
+    grid-template-columns: 1fr !important;
   }
   .editorial-grid > a {
     height: 420px !important;

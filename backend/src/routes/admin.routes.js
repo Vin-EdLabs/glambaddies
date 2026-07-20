@@ -35,4 +35,7 @@ router.put('/password', controller.changePassword);
 
 router.get('/users', controller.listUsers);
 
+router.get('/newsletter', controller.listNewsletter);
+router.delete('/newsletter/:id', controller.deleteNewsletter);
+
 module.exports = router;

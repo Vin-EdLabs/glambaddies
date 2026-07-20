@@ -250,6 +250,44 @@ exports.getStatus = async (req, res, next) => {
   }
 };
 
+// POST /api/store/newsletter { email }
+exports.subscribeNewsletter = async (req, res, next) => {
+  try {
+    const email = String(req.body?.email || '')
+      .trim()
+      .toLowerCase();
+    if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      throw new ApiError(400, 'Enter a valid email address');
+    }
+
+    const inserted = await db.query(
+      `INSERT INTO newsletter_subscribers (email, source)
+       VALUES ($1, $2)
+       ON CONFLICT (email) DO NOTHING
+       RETURNING id, email, created_at`,
+      [email, 'footer']
+    );
+
+    if (inserted.rows.length > 0) {
+      return res.status(201).json({
+        message: 'You’re on the private list. Welcome.',
+        subscriber: inserted.rows[0],
+      });
+    }
+
+    const existing = await db.query(
+      `SELECT id, email, created_at FROM newsletter_subscribers WHERE email = $1`,
+      [email]
+    );
+    res.json({
+      message: 'You’re already on the private list.',
+      subscriber: existing.rows[0],
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
 exports.getPurchasesEnabled = getPurchasesEnabled;
 exports.getPaymentConfig = getPaymentConfig;
 exports.ensureSettings = ensureSettings;

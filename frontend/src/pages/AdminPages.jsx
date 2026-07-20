@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link, Navigate, useNavigate, useParams } from 'react-router-dom'
 import toast from 'react-hot-toast'
-import { ArrowRight, Box, Check, DollarSign, Edit3, Eye, EyeOff, Plus, Search, ShoppingCart, Trash2, Upload, Users } from 'lucide-react'
+import { ArrowRight, Box, Check, DollarSign, Edit3, Eye, EyeOff, Mail, Plus, Search, ShoppingCart, Trash2, Upload, Users } from 'lucide-react'
 import { EmptyState, ErrorState, LoadingGrid, CopyValue, ConfirmDialog } from '../components'
 import { useAuth } from '../contexts'
 import api, { asArray, errorMessage, mapProduct, mapProducts, resolveImageUrl } from '../services/api'
@@ -405,6 +405,98 @@ export function AdminCustomers() {
   const [page, setPage] = useState(1)
   const { data, loading, error, retry } = useAdminData(() => api.get('/vince-77-00/users', { params: { page, limit: 20 } }).then(({ data }) => data), [page])
   return <AdminPage title="Customers" intro={`${data?.pagination.total || 0} customer profiles`}>{loading ? <LoadingGrid /> : error ? <ErrorState retry={retry} /> : data.users.length ? <section className="admin-card table-card"><div className="data-table"><table><thead><tr><th>Customer</th><th>Orders</th><th>Joined</th></tr></thead><tbody>{data.users.map((customer) => <tr key={customer.id}><td><div className="customer-cell"><span>{customer.name.split(' ').map((item) => item[0]).join('')}</span><div><b>{customer.name}</b><small>{customer.email}</small></div></div></td><td>{customer.order_count}</td><td>{new Date(customer.created_at).toLocaleDateString()}</td></tr>)}</tbody></table></div><Pagination page={page} total={data.pagination.total} limit={20} setPage={setPage} /></section> : <EmptyState title="No customers yet" text="Registered customers will appear here." />}</AdminPage>
+}
+
+export function AdminNewsletter() {
+  const [page, setPage] = useState(1)
+  const [query, setQuery] = useState('')
+  const [busyId, setBusyId] = useState(null)
+  const { data, loading, error, retry, setData } = useAdminData(
+    () => api.get('/vince-77-00/newsletter', { params: { page, limit: 30, q: query || undefined } })
+      .then(({ data: result }) => ({
+        subscribers: asArray(result?.subscribers),
+        pagination: result?.pagination || { total: 0 },
+      })),
+    [page, query],
+  )
+  const remove = async (subscriber) => {
+    if (!window.confirm(`Remove ${subscriber.email} from the private list?`)) return
+    setBusyId(subscriber.id)
+    const previous = data
+    setData({
+      ...data,
+      subscribers: asArray(data?.subscribers).filter((item) => item.id !== subscriber.id),
+      pagination: { ...data.pagination, total: Math.max(0, (data.pagination?.total || 0) - 1) },
+    })
+    try {
+      await api.delete(`/vince-77-00/newsletter/${subscriber.id}`)
+      toast.success('Removed from private list')
+    } catch (deleteError) {
+      setData(previous)
+      toast.error(errorMessage(deleteError, 'Could not remove subscriber'))
+    } finally {
+      setBusyId(null)
+    }
+  }
+  const subscribers = asArray(data?.subscribers)
+  const total = data?.pagination?.total || 0
+  return (
+    <AdminPage title="Private list" intro={`${total} newsletter sign-ups from the store footer`}>
+      <div className="admin-toolbar">
+        <label>
+          <Search />
+          <input
+            value={query}
+            onChange={(event) => { setQuery(event.target.value); setPage(1) }}
+            placeholder="Search emails…"
+            aria-label="Search private list"
+          />
+        </label>
+      </div>
+      {loading ? <LoadingGrid /> : error ? <ErrorState retry={retry} /> : subscribers.length ? (
+        <section className="admin-card table-card">
+          <div className="data-table">
+            <table>
+              <thead>
+                <tr>
+                  <th>Email</th>
+                  <th>Source</th>
+                  <th>Joined</th>
+                  <th />
+                </tr>
+              </thead>
+              <tbody>
+                {subscribers.map((subscriber) => (
+                  <tr key={subscriber.id}>
+                    <td>
+                      <div className="customer-cell">
+                        <span>{String(subscriber.email || '?')[0].toUpperCase()}</span>
+                        <div>
+                          <b>{subscriber.email}</b>
+                          <small>#{subscriber.id}</small>
+                        </div>
+                      </div>
+                    </td>
+                    <td><span className="status active">{subscriber.source || 'footer'}</span></td>
+                    <td>{new Date(subscriber.created_at).toLocaleString()}</td>
+                    <td className="row-actions">
+                      <a className="table-icon" href={`mailto:${subscriber.email}`} aria-label={`Email ${subscriber.email}`}><Mail /></a>
+                      <button type="button" className="table-icon danger" disabled={busyId === subscriber.id} onClick={() => remove(subscriber)} aria-label={`Remove ${subscriber.email}`}>
+                        <Trash2 />
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <Pagination page={page} total={total} limit={30} setPage={setPage} />
+        </section>
+      ) : (
+        <EmptyState title="No sign-ups yet" text="When shoppers join the private list in the footer, their emails will appear here." />
+      )}
+    </AdminPage>
+  )
 }
 
 export function Analytics() {

@@ -793,3 +793,59 @@ exports.listUsers = async (req, res, next) => {
     next(err);
   }
 };
+
+/* --------------------------- private list / newsletter --------------------------- */
+
+// GET /api/vince-77-00/newsletter
+exports.listNewsletter = async (req, res, next) => {
+  try {
+    const { page, limit, offset } = parsePagination(req.query, {
+      defaultLimit: 30,
+    });
+    const q = String(req.query.q || '').trim().toLowerCase();
+    const params = [];
+    let where = '';
+    if (q) {
+      params.push(`%${q}%`);
+      where = `WHERE email ILIKE $${params.length}`;
+    }
+
+    const countResult = await db.query(
+      `SELECT COUNT(*)::int AS total FROM newsletter_subscribers ${where}`,
+      params
+    );
+    const { rows } = await db.query(
+      `SELECT id, email, source, created_at
+       FROM newsletter_subscribers
+       ${where}
+       ORDER BY created_at DESC
+       LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
+      [...params, limit, offset]
+    );
+
+    res.json({
+      subscribers: rows,
+      pagination: { page, limit, total: countResult.rows[0].total },
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
+// DELETE /api/vince-77-00/newsletter/:id
+exports.deleteNewsletter = async (req, res, next) => {
+  try {
+    const id = Number(req.params.id);
+    if (!Number.isInteger(id) || id < 1) {
+      throw new ApiError(400, 'Invalid subscriber id');
+    }
+    const { rows } = await db.query(
+      'DELETE FROM newsletter_subscribers WHERE id = $1 RETURNING id, email',
+      [id]
+    );
+    if (rows.length === 0) throw new ApiError(404, 'Subscriber not found');
+    res.json({ message: 'Removed from private list', subscriber: rows[0] });
+  } catch (err) {
+    next(err);
+  }
+};

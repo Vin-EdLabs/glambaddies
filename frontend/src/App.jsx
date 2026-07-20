@@ -5,7 +5,7 @@ import { AdminLayout, StoreLayout } from './components'
 import { AuthProvider, CartProvider } from './contexts'
 import { ADMIN_PATH } from './adminPath'
 import { About, Account, Checkout, Home, InfoPage, Login, NotFound, OrderConfirmation, ProductDetail, Shop, TrackOrder } from './pages/StorePages'
-import { AdminCategories, AdminCustomers, AdminLogin, AdminOrderDetail, AdminOrders, AdminProducts, AdminSettings, Analytics, Dashboard, ProductForm } from './pages/AdminPages'
+import { AdminCategories, AdminCustomers, AdminLogin, AdminNewsletter, AdminOrderDetail, AdminOrders, AdminProducts, AdminSettings, Analytics, Dashboard, ProductForm } from './pages/AdminPages'
 
 function SmoothScrollManager() {
   const { pathname, search, hash } = useLocation()
@@ -56,6 +56,7 @@ export default function App() {
         <Route path="orders/:id" element={<AdminOrderDetail />} />
         <Route path="categories" element={<AdminCategories />} />
         <Route path="customers" element={<AdminCustomers />} />
+        <Route path="private-list" element={<AdminNewsletter />} />
         <Route path="analytics" element={<Analytics />} />
         <Route path="settings" element={<AdminSettings />} />
       </Route>
