@@ -2,10 +2,11 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link, Navigate, useNavigate, useParams } from 'react-router-dom'
 import toast from 'react-hot-toast'
 import { ArrowRight, Box, Check, DollarSign, Edit3, Eye, EyeOff, Plus, Search, ShoppingCart, Trash2, Upload, Users } from 'lucide-react'
-import { EmptyState, ErrorState, LoadingGrid, CopyValue } from '../components'
+import { EmptyState, ErrorState, LoadingGrid, CopyValue, ConfirmDialog } from '../components'
 import { useAuth } from '../contexts'
-import api, { errorMessage, mapProduct, resolveImageUrl } from '../services/api'
+import api, { asArray, errorMessage, mapProduct, mapProducts, resolveImageUrl } from '../services/api'
 import { formatCurrency } from '../utils'
+import { ADMIN_PATH } from '../adminPath'
 
 function useAdminData(load, dependencies) {
   const [state, setState] = useState({ data: null, loading: true, error: null })
@@ -23,7 +24,7 @@ export function AdminLogin() {
   const { admin, loginAdmin } = useAuth()
   const navigate = useNavigate()
   const [submitting, setSubmitting] = useState(false)
-  if (admin && localStorage.getItem('vub_admin_token')) return <Navigate to="/admin" replace />
+  if (admin && localStorage.getItem('vub_admin_token')) return <Navigate to={ADMIN_PATH} replace />
   const submit = async (event) => {
     event.preventDefault()
     const form = event.currentTarget
@@ -32,7 +33,7 @@ export function AdminLogin() {
       const fields = Object.fromEntries(new FormData(form))
       await loginAdmin({ email: fields.email, password: fields.password })
       toast.success('Welcome to Vublishop Admin')
-      navigate('/admin')
+      navigate(ADMIN_PATH)
     } catch (error) {
       toast.error(errorMessage(error, 'Invalid email or password'))
     } finally {
@@ -43,6 +44,8 @@ export function AdminLogin() {
 }
 
 export function Dashboard() {
+  const [confirm, setConfirm] = useState(null)
+  const [busy, setBusy] = useState(false)
   const { data, loading, error, retry, setData } = useAdminData(
     () => Promise.all([
       api.get('/admin/dashboard'),
@@ -50,7 +53,7 @@ export function Dashboard() {
       api.get('/admin/settings'),
     ]).then(([stats, orders, settings]) => ({
       stats: stats.data.stats,
-      orders: orders.data.orders,
+      orders: asArray(orders.data?.orders),
       purchases_enabled: settings.data.purchases_enabled,
     })), [],
   )
@@ -66,6 +69,20 @@ export function Dashboard() {
       toast.error(errorMessage(toggleError, 'Could not update store availability'))
     }
   }
+  const runDelete = async () => {
+    if (!confirm?.id) return
+    setBusy(true)
+    try {
+      await api.post(`/admin/orders/${confirm.id}/delete`)
+      toast.success('Order deleted')
+      setConfirm(null)
+      retry()
+    } catch (deleteError) {
+      toast.error(errorMessage(deleteError, 'Could not delete order'))
+    } finally {
+      setBusy(false)
+    }
+  }
   return <AdminPage title="Overview" intro="Here’s what’s happening with your store today.">{loading ? <LoadingGrid /> : error ? <ErrorState retry={retry} /> : <>
     <section className="admin-card store-toggle-card">
       <div>
@@ -78,7 +95,22 @@ export function Dashboard() {
       </button>
     </section>
     <Stats stats={data.stats} />
-    <section className="admin-card"><div className="card-head"><div><h2>Recent orders</h2><p>Latest transactions from your store</p></div><Link to="/admin/orders">View all orders <ArrowRight /></Link></div>{data.orders.length ? <OrderTable data={data.orders} /> : <EmptyState title="No orders yet" text="New orders will appear here." />}</section>
+    <section className="admin-card"><div className="card-head"><div><h2>Recent orders</h2><p>Latest transactions from your store</p></div><Link to={`${ADMIN_PATH}/orders`}>View all orders <ArrowRight /></Link></div>{asArray(data?.orders).length ? <OrderTable data={asArray(data.orders)} onDelete={(id) => setConfirm({
+      id,
+      title: `Delete order #${id}?`,
+      message: 'This order will be permanently removed from your store.',
+      detail: 'Revenue and order counts on the dashboard will update to match what remains.',
+    })} /> : <EmptyState title="No orders yet" text="New orders will appear here." />}</section>
+    <ConfirmDialog
+      open={Boolean(confirm)}
+      title={confirm?.title}
+      message={confirm?.message}
+      detail={confirm?.detail}
+      confirmLabel="Delete order"
+      busy={busy}
+      onCancel={() => { if (!busy) setConfirm(null) }}
+      onConfirm={runDelete}
+    />
   </>}</AdminPage>
 }
 
@@ -98,9 +130,9 @@ export function AdminProducts() {
   const [page, setPage] = useState(1)
   const [query, setQuery] = useState('')
   const { data, loading, error, retry, setData } = useAdminData(
-    () => api.get('/admin/products', { params: { page, limit: 20 } }).then(({ data }) => ({ ...data, products: data.products.map(mapProduct) })), [page],
+    () => api.get('/admin/products', { params: { page, limit: 20 } }).then(({ data }) => ({ ...data, products: mapProducts(data?.products), pagination: data?.pagination || { total: 0 } })), [page],
   )
-  const products = useMemo(() => (data?.products || []).filter((product) => `${product.name} ${product.category}`.toLowerCase().includes(query.toLowerCase())), [data, query])
+  const products = useMemo(() => asArray(data?.products).filter((product) => `${product.name} ${product.category}`.toLowerCase().includes(query.toLowerCase())), [data, query])
   const remove = async (id) => {
     if (!window.confirm('Delete this product? Products in past orders will be deactivated.')) return
     try {
@@ -111,7 +143,7 @@ export function AdminProducts() {
       toast.error(errorMessage(deleteError, 'Could not delete product'))
     }
   }
-  return <AdminPage title="Products" intro={`${data?.pagination.total || 0} products in your catalogue`} action={<Link className="admin-button primary" to="/admin/products/new"><Plus /> Add product</Link>}><div className="admin-toolbar"><label><Search /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search this page..." /></label></div>{loading ? <LoadingGrid /> : error ? <ErrorState retry={retry} /> : products.length ? <section className="admin-card table-card"><div className="data-table"><table><thead><tr><th>Product</th><th>Category</th><th>Price</th><th>Stock</th><th>Status</th><th /></tr></thead><tbody>{products.map((product) => <tr key={product.id}><td><div className="table-product"><img src={product.image} alt="" /><span><b>{product.name}</b><small>#{product.id}</small></span></div></td><td>{product.category}</td><td>{formatCurrency(product.price)}</td><td><span className={product.stock < 6 ? 'low-stock' : ''}>{product.stock} units</span></td><td><span className={`status ${product.is_active ? 'active' : 'draft'}`}>{product.is_active ? 'Active' : 'Draft'}</span></td><td className="row-actions"><Link to={`/admin/products/${product.id}/edit`}><Edit3 /></Link><button onClick={() => remove(product.id)}><Trash2 /></button></td></tr>)}</tbody></table></div><Pagination page={page} total={data.pagination.total} limit={20} setPage={setPage} /></section> : <EmptyState title="No products found" text="Add a product or change your search." action="Add product" to="/admin/products/new" />}</AdminPage>
+  return <AdminPage title="Products" intro={`${data?.pagination.total || 0} products in your catalogue`} action={<Link className="admin-button primary" to={`${ADMIN_PATH}/products/new`}><Plus /> Add product</Link>}><div className="admin-toolbar"><label><Search /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search this page..." /></label></div>{loading ? <LoadingGrid /> : error ? <ErrorState retry={retry} /> : products.length ? <section className="admin-card table-card"><div className="data-table"><table><thead><tr><th>Product</th><th>Category</th><th>Price</th><th>Stock</th><th>Status</th><th /></tr></thead><tbody>{products.map((product) => <tr key={product.id}><td><div className="table-product"><img src={product.image} alt="" /><span><b>{product.name}</b><small>#{product.id}</small></span></div></td><td>{product.category}</td><td>{formatCurrency(product.price)}</td><td><span className={product.stock < 6 ? 'low-stock' : ''}>{product.stock} units</span></td><td><span className={`status ${product.is_active ? 'active' : 'draft'}`}>{product.is_active ? 'Active' : 'Draft'}</span></td><td className="row-actions"><Link to={`${ADMIN_PATH}/products/${product.id}/edit`}><Edit3 /></Link><button onClick={() => remove(product.id)}><Trash2 /></button></td></tr>)}</tbody></table></div><Pagination page={page} total={data.pagination.total} limit={20} setPage={setPage} /></section> : <EmptyState title="No products found" text="Add a product or change your search." action="Add product" to={`${ADMIN_PATH}/products/new`} />}</AdminPage>
 }
 
 function Pagination({ page, total, limit, setPage }) {
@@ -126,7 +158,7 @@ export function ProductForm() {
   const [files, setFiles] = useState([])
   const [saving, setSaving] = useState(false)
   const { data, loading, error, retry, setData } = useAdminData(
-    () => Promise.all([api.get('/categories'), id ? api.get('/admin/products', { params: { limit: 100 } }) : Promise.resolve({ data: { products: [] } })]).then(([categories, products]) => ({ categories: categories.data.categories, product: products.data.products.find((item) => String(item.id) === id) || null })), [id],
+    () => Promise.all([api.get('/categories'), id ? api.get('/admin/products', { params: { limit: 100 } }) : Promise.resolve({ data: { products: [] } })]).then(([categories, products]) => ({ categories: asArray(categories.data?.categories), product: mapProducts(products.data?.products).find((item) => String(item.id) === id) || null })), [id],
   )
   const product = data?.product ? mapProduct(data.product) : null
   const productImages = Array.isArray(data?.product?.images) ? data.product.images : []
@@ -150,7 +182,7 @@ export function ProductForm() {
     try {
       await api({ method: id ? 'put' : 'post', url: id ? `/admin/products/${id}` : '/admin/products', data: form })
       toast.success(id ? 'Product updated' : 'Product created')
-      navigate('/admin/products')
+      navigate(`${ADMIN_PATH}/products`)
     } catch (saveError) {
       toast.error(errorMessage(saveError, 'Could not save product'))
     } finally {
@@ -159,18 +191,29 @@ export function ProductForm() {
   }
   if (loading) return <AdminPage title="Product"><LoadingGrid /></AdminPage>
   if (error) return <AdminPage title="Product"><ErrorState retry={retry} /></AdminPage>
-  if (id && !product) return <AdminPage title="Product"><EmptyState title="Product not found" text="It may have been deleted." action="Back to products" to="/admin/products" /></AdminPage>
-  return <AdminPage title={product ? 'Edit product' : 'Add product'} action={<div className="form-actions"><button onClick={() => navigate('/admin/products')}>Cancel</button><button className="admin-button primary" form="product-form" disabled={saving}><Check /> {saving ? 'Saving…' : 'Save product'}</button></div>}><form id="product-form" className="product-form" onSubmit={submit}><div><section className="admin-card"><h2>Basic information</h2><label>Product name<input name="name" required defaultValue={product?.name} placeholder="Enter product name" /></label><label>Description<textarea name="description" rows="6" defaultValue={product?.description} placeholder="Describe the product..." /></label><label>Category<select name="category_id" defaultValue={product?.category_id || ''}><option value="">Uncategorised</option>{data.categories.map((category) => <option value={category.id} key={category.id}>{category.name}</option>)}</select></label></section><section className="admin-card"><h2>Media</h2><label className="upload-area"><Upload /><b>Choose images to upload</b><small>PNG, JPG or WEBP. Maximum 5MB each.</small><input type="file" accept="image/png,image/jpeg,image/webp" multiple onChange={(event) => setFiles([...event.target.files])} /></label><div className="category-admin-grid">{productImages.map((image) => <div className="uploaded-image" key={image.id}><img src={resolveImageUrl(image.url)} alt="" /><button type="button" onClick={() => deleteImage(image.id)}><Trash2 /></button></div>)}{files.map((file) => <div className="uploaded-image" key={`${file.name}-${file.lastModified}`}><img src={URL.createObjectURL(file)} alt="New upload preview" /></div>)}</div></section></div><aside><section className="admin-card"><h2>Pricing</h2><label>Price (USD)<input name="price" type="number" min="0" step="0.01" required defaultValue={product?.price} /></label></section><section className="admin-card"><h2>Inventory</h2><label>Quantity<input name="stock" type="number" min="0" step="1" required defaultValue={product?.stock ?? 0} /></label></section><section className="admin-card"><h2>Status</h2><label>Product status<select name="is_active" defaultValue={String(product?.is_active ?? true)}><option value="true">Active</option><option value="false">Draft</option></select></label></section></aside></form></AdminPage>
+  if (id && !product) return <AdminPage title="Product"><EmptyState title="Product not found" text="It may have been deleted." action="Back to products" to={`${ADMIN_PATH}/products`} /></AdminPage>
+  return <AdminPage title={product ? 'Edit product' : 'Add product'} action={<div className="form-actions"><button onClick={() => navigate(`${ADMIN_PATH}/products`)}>Cancel</button><button className="admin-button primary" form="product-form" disabled={saving}><Check /> {saving ? 'Saving…' : 'Save product'}</button></div>}><form id="product-form" className="product-form" onSubmit={submit}><div><section className="admin-card"><h2>Basic information</h2><label>Product name<input name="name" required defaultValue={product?.name} placeholder="Enter product name" /></label><label>Description<textarea name="description" rows="6" defaultValue={product?.description} placeholder="Describe the product..." /></label><label>Category<select name="category_id" defaultValue={product?.category_id || ''}><option value="">Uncategorised</option>{asArray(data?.categories).map((category) => <option value={category.id} key={category.id}>{category.name}</option>)}</select></label></section><section className="admin-card"><h2>Media</h2><label className="upload-area"><Upload /><b>Choose images to upload</b><small>PNG, JPG or WEBP. Maximum 5MB each.</small><input type="file" accept="image/png,image/jpeg,image/webp" multiple onChange={(event) => setFiles([...event.target.files])} /></label><div className="category-admin-grid">{productImages.map((image) => <div className="uploaded-image" key={image.id}><img src={resolveImageUrl(image.url)} alt="" /><button type="button" onClick={() => deleteImage(image.id)}><Trash2 /></button></div>)}{files.map((file) => <div className="uploaded-image" key={`${file.name}-${file.lastModified}`}><img src={URL.createObjectURL(file)} alt="New upload preview" /></div>)}</div></section></div><aside><section className="admin-card"><h2>Pricing</h2><label>Price (USD)<input name="price" type="number" min="0" step="0.01" required defaultValue={product?.price} /></label></section><section className="admin-card"><h2>Inventory</h2><label>Quantity<input name="stock" type="number" min="0" step="1" required defaultValue={product?.stock ?? 0} /></label></section><section className="admin-card"><h2>Status</h2><label>Product status<select name="is_active" defaultValue={String(product?.is_active ?? true)}><option value="true">Active</option><option value="false">Draft</option></select></label></section></aside></form></AdminPage>
 }
 
 const orderStatuses = ['pending', 'paid', 'shipped', 'delivered', 'cancelled']
 export function AdminOrders() {
   const [status, setStatus] = useState('')
   const [page, setPage] = useState(1)
-  const { data, loading, error, retry, setData } = useAdminData(() => api.get('/admin/orders', { params: { status: status || undefined, page, limit: 20 } }).then(({ data }) => data), [status, page])
+  const [clearing, setClearing] = useState(false)
+  const [confirm, setConfirm] = useState(null)
+  const [busy, setBusy] = useState(false)
+  const { data, loading, error, retry, setData } = useAdminData(
+    () => api.get('/admin/orders', { params: { status: status || undefined, page, limit: 20 } })
+      .then(({ data: result }) => ({
+        ...result,
+        orders: asArray(result?.orders),
+        pagination: result?.pagination || { total: 0 },
+      })),
+    [status, page],
+  )
   const updateStatus = async (id, nextStatus) => {
     const previous = data
-    setData({ ...data, orders: data.orders.map((order) => order.id === id ? { ...order, status: nextStatus } : order) })
+    setData({ ...data, orders: asArray(data?.orders).map((order) => order.id === id ? { ...order, status: nextStatus } : order) })
     try {
       await api.put(`/admin/orders/${id}/status`, { status: nextStatus })
       toast.success('Order status updated')
@@ -179,16 +222,88 @@ export function AdminOrders() {
       toast.error(errorMessage(updateError, 'Could not update order'))
     }
   }
-  return <AdminPage title="Orders" intro="Manage and fulfil customer orders"><div className="admin-toolbar"><select value={status} onChange={(event) => { setStatus(event.target.value); setPage(1) }}><option value="">All status</option>{orderStatuses.map((item) => <option value={item} key={item}>{item}</option>)}</select></div>{loading ? <LoadingGrid /> : error ? <ErrorState retry={retry} /> : data.orders.length ? <section className="admin-card table-card"><OrderTable data={data.orders} onStatus={updateStatus} /><Pagination page={page} total={data.pagination.total} limit={20} setPage={setPage} /></section> : <EmptyState title="No orders found" text="Orders matching this status will appear here." />}</AdminPage>
+  const askDelete = (id) => setConfirm({
+    type: 'one',
+    id,
+    title: `Delete order #${id}?`,
+    message: 'This order will be permanently removed from your store.',
+    detail: 'Dashboard revenue will only include the orders that remain.',
+    confirmLabel: 'Delete order',
+  })
+  const askClearAll = () => setConfirm({
+    type: 'all',
+    title: 'Clear all orders?',
+    message: 'Every order in the store will be deleted at once.',
+    detail: 'This resets dashboard income to zero and cannot be undone.',
+    confirmLabel: 'Clear all orders',
+  })
+  const runConfirm = async () => {
+    if (!confirm) return
+    setBusy(true)
+    try {
+      if (confirm.type === 'all') {
+        setClearing(true)
+        const { data: result } = await api.post('/admin/orders/clear')
+        toast.success(result.message || 'All orders cleared')
+        setPage(1)
+        setConfirm(null)
+        retry()
+      } else {
+        const previous = data
+        const nextOrders = asArray(data?.orders).filter((order) => order.id !== confirm.id)
+        setData({
+          ...data,
+          orders: nextOrders,
+          pagination: {
+            ...data.pagination,
+            total: Math.max(0, (data.pagination?.total || 0) - 1),
+          },
+        })
+        try {
+          await api.post(`/admin/orders/${confirm.id}/delete`)
+          toast.success('Order deleted')
+          setConfirm(null)
+          if (!nextOrders.length && page > 1) setPage(page - 1)
+          else retry()
+        } catch (deleteError) {
+          setData(previous)
+          throw deleteError
+        }
+      }
+    } catch (actionError) {
+      toast.error(errorMessage(actionError, 'Could not complete delete'))
+    } finally {
+      setBusy(false)
+      setClearing(false)
+    }
+  }
+  const orders = asArray(data?.orders)
+  const totalOrders = data?.pagination?.total || 0
+  return <AdminPage title="Orders" intro="Manage and fulfil customer orders. Delete orders to remove them from dashboard revenue." action={<button type="button" className="admin-button danger" disabled={clearing || loading || !totalOrders} onClick={askClearAll}><Trash2 /> {clearing ? 'Clearing…' : 'Clear all orders'}</button>}>
+    <div className="admin-toolbar"><select value={status} onChange={(event) => { setStatus(event.target.value); setPage(1) }}><option value="">All status</option>{orderStatuses.map((item) => <option value={item} key={item}>{item}</option>)}</select></div>
+    {loading ? <LoadingGrid /> : error ? <ErrorState retry={retry} /> : orders.length ? <section className="admin-card table-card"><OrderTable data={orders} onStatus={updateStatus} onDelete={askDelete} /><Pagination page={page} total={data.pagination.total} limit={20} setPage={setPage} /></section> : <EmptyState title="No orders found" text="Orders matching this status will appear here." />}
+    <ConfirmDialog
+      open={Boolean(confirm)}
+      title={confirm?.title}
+      message={confirm?.message}
+      detail={confirm?.detail}
+      confirmLabel={confirm?.confirmLabel}
+      busy={busy}
+      onCancel={() => { if (!busy) setConfirm(null) }}
+      onConfirm={runConfirm}
+    />
+  </AdminPage>
 }
 
-function OrderTable({ data, onStatus }) {
-  return <div className="data-table"><table><thead><tr><th>Order</th><th>Customer</th><th>Date</th><th>Total</th><th>Status</th><th /></tr></thead><tbody>{data.map((order) => <tr key={order.id}><td><b>#{order.id}</b></td><td><div className="customer-cell"><span>{(order.user_name || 'C').split(' ').map((item) => item[0]).join('')}</span><div><b>{order.user_name || 'Customer'}</b><small>{order.user_email}</small></div></div></td><td>{new Date(order.created_at).toLocaleDateString()}</td><td><b>{formatCurrency(Number(order.total ?? order.total_cents / 100))}</b></td><td>{onStatus ? <select className={`status ${order.status}`} value={order.status} onChange={(event) => onStatus(order.id, event.target.value)}>{orderStatuses.map((item) => <option value={item} key={item}>{item}</option>)}</select> : <span className={`status ${order.status}`}>{order.status}</span>}</td><td><Link className="table-icon" to={`/admin/orders/${order.id}`} aria-label={`View order ${order.id}`}><Eye /></Link></td></tr>)}</tbody></table></div>
+function OrderTable({ data, onStatus, onDelete }) {
+  return <div className="data-table"><table><thead><tr><th>Order</th><th>Customer</th><th>Date</th><th>Total</th><th>Status</th><th /></tr></thead><tbody>{asArray(data).map((order) => <tr key={order.id}><td><b>#{order.id}</b></td><td><div className="customer-cell"><span>{(order.user_name || 'C').split(' ').map((item) => item[0]).join('')}</span><div><b>{order.user_name || 'Customer'}</b><small>{order.user_email}</small></div></div></td><td>{new Date(order.created_at).toLocaleDateString()}</td><td><b>{formatCurrency(Number(order.total ?? order.total_cents / 100))}</b></td><td>{onStatus ? <select className={`status ${order.status}`} value={order.status} onChange={(event) => onStatus(order.id, event.target.value)}>{orderStatuses.map((item) => <option value={item} key={item}>{item}</option>)}</select> : <span className={`status ${order.status}`}>{order.status}</span>}</td><td><div className="row-actions"><Link className="table-icon" to={`${ADMIN_PATH}/orders/${order.id}`} aria-label={`View order ${order.id}`}><Eye /></Link>{onDelete ? <button type="button" className="table-icon danger" aria-label={`Delete order ${order.id}`} onClick={() => onDelete(order.id)}><Trash2 /></button> : null}</div></td></tr>)}</tbody></table></div>
 }
 
 export function AdminOrderDetail() {
   const { id } = useParams()
   const navigate = useNavigate()
+  const [confirmOpen, setConfirmOpen] = useState(false)
+  const [deleting, setDeleting] = useState(false)
   const { data, loading, error, retry, setData } = useAdminData(
     () => api.get(`/admin/orders/${id}`).then(({ data }) => data.order), [id],
   )
@@ -203,11 +318,33 @@ export function AdminOrderDetail() {
       toast.error(errorMessage(updateError, 'Could not update order'))
     }
   }
+  const deleteOrder = async () => {
+    setDeleting(true)
+    try {
+      await api.post(`/admin/orders/${id}/delete`)
+      toast.success('Order deleted')
+      navigate(`${ADMIN_PATH}/orders`)
+    } catch (deleteError) {
+      toast.error(errorMessage(deleteError, 'Could not delete order'))
+      setDeleting(false)
+      setConfirmOpen(false)
+    }
+  }
   if (loading) return <AdminPage title="Order"><LoadingGrid /></AdminPage>
   if (error) return <AdminPage title="Order"><ErrorState retry={retry} /></AdminPage>
-  if (!data) return <AdminPage title="Order"><EmptyState title="Order not found" text="This order may have been removed." action="Back to orders" to="/admin/orders" /></AdminPage>
+  if (!data) return <AdminPage title="Order"><EmptyState title="Order not found" text="This order may have been removed." action="Back to orders" to={`${ADMIN_PATH}/orders`} /></AdminPage>
   const address = typeof data.shipping_address === 'string' ? JSON.parse(data.shipping_address) : (data.shipping_address || {})
-  return <AdminPage title={`Order #${data.id}`} intro={`Placed ${new Date(data.created_at).toLocaleString()}`} action={<button className="admin-button" onClick={() => navigate('/admin/orders')}>Back to orders</button>}>
+  return <AdminPage title={`Order #${data.id}`} intro={`Placed ${new Date(data.created_at).toLocaleString()}`} action={<div className="form-actions"><button type="button" className="admin-button danger" disabled={deleting} onClick={() => setConfirmOpen(true)}><Trash2 /> Delete order</button><button className="admin-button" onClick={() => navigate(`${ADMIN_PATH}/orders`)}>Back to orders</button></div>}>
+    <ConfirmDialog
+      open={confirmOpen}
+      title={`Delete order #${data.id}?`}
+      message="This order will be permanently removed from your store."
+      detail="Dashboard revenue will only include the orders that remain."
+      confirmLabel="Delete order"
+      busy={deleting}
+      onCancel={() => { if (!deleting) setConfirmOpen(false) }}
+      onConfirm={deleteOrder}
+    />
     <div className="dashboard-grid">
       <section className="admin-card">
         <div className="card-head"><div><h2>Customer</h2><p>Who placed this order</p></div></div>
@@ -237,7 +374,7 @@ export function AdminOrderDetail() {
 
 export function AdminCategories() {
   const [editing, setEditing] = useState(null)
-  const { data: categories, loading, error, retry, setData } = useAdminData(() => api.get('/categories').then(({ data }) => data.categories), [])
+  const { data: categories, loading, error, retry, setData } = useAdminData(() => api.get('/categories').then(({ data }) => asArray(data?.categories)), [])
   const save = async (event) => {
     event.preventDefault()
     const form = event.currentTarget
@@ -261,7 +398,7 @@ export function AdminCategories() {
       toast.error(errorMessage(deleteError, 'Could not delete category'))
     }
   }
-  return <AdminPage title="Categories" intro="Organise products into collections" action={<button className="admin-button primary" onClick={() => setEditing({})}><Plus /> Add category</button>}>{editing && <form className="admin-card stack-form" onSubmit={save}><label>Name<input name="name" required defaultValue={editing.name} /></label><label>Description<textarea name="description" defaultValue={editing.description} /></label><div className="form-actions"><button type="button" onClick={() => setEditing(null)}>Cancel</button><button className="admin-button primary">Save category</button></div></form>}{loading ? <LoadingGrid /> : error ? <ErrorState retry={retry} /> : categories.length ? <div className="category-admin-grid">{categories.map((category) => <article className="admin-card" key={category.id}><div><span><h3>{category.name}</h3><p>{category.product_count} products</p></span><div className="row-actions"><button onClick={() => setEditing(category)}><Edit3 /></button><button onClick={() => remove(category)}><Trash2 /></button></div></div></article>)}</div> : <EmptyState title="No categories yet" text="Create a category to organise products." />}</AdminPage>
+  return <AdminPage title="Categories" intro="Organise products into collections" action={<button className="admin-button primary" onClick={() => setEditing({})}><Plus /> Add category</button>}>{editing && <form className="admin-card stack-form" onSubmit={save}><label>Name<input name="name" required defaultValue={editing.name} /></label><label>Description<textarea name="description" defaultValue={editing.description} /></label><div className="form-actions"><button type="button" onClick={() => setEditing(null)}>Cancel</button><button className="admin-button primary">Save category</button></div></form>}{loading ? <LoadingGrid /> : error ? <ErrorState retry={retry} /> : asArray(categories).length ? <div className="category-admin-grid">{asArray(categories).map((category) => <article className="admin-card" key={category.id}><div><span><h3>{category.name}</h3><p>{category.product_count} products</p></span><div className="row-actions"><button onClick={() => setEditing(category)}><Edit3 /></button><button onClick={() => remove(category)}><Trash2 /></button></div></div></article>)}</div> : <EmptyState title="No categories yet" text="Create a category to organise products." />}</AdminPage>
 }
 
 export function AdminCustomers() {
@@ -271,15 +408,199 @@ export function AdminCustomers() {
 }
 
 export function Analytics() {
-  const { data: stats, loading, error, retry } = useAdminData(() => api.get('/admin/dashboard').then(({ data }) => data.stats), [])
-  return <AdminPage title="Analytics" intro="Live performance totals across your storefront">{loading ? <LoadingGrid /> : error ? <ErrorState retry={retry} /> : <><Stats stats={stats} /><section className="admin-card analytics-placeholder"><DollarSign /><h2>{formatCurrency(Number(stats.revenue_cents) / 100)} lifetime revenue</h2><p>Revenue includes orders currently paid, shipped or delivered.</p></section></>}</AdminPage>
+  const { data, loading, error, retry } = useAdminData(
+    () => api.get('/admin/analytics', { params: { days: 14 } }).then(({ data: result }) => result),
+    [],
+  )
+  if (loading) return <AdminPage title="Analytics" intro="Live performance across your storefront"><LoadingGrid /></AdminPage>
+  if (error) return <AdminPage title="Analytics"><ErrorState retry={retry} /></AdminPage>
+
+  const stats = data.stats
+  const daily = asArray(data.daily)
+  const status = data.status || {}
+  const topProducts = asArray(data.top_products)
+  const periodRevenue = daily.reduce((sum, day) => sum + Number(day.revenue_cents || 0), 0)
+  const periodOrders = daily.reduce((sum, day) => sum + Number(day.order_count || 0), 0)
+
+  return (
+    <AdminPage title="Analytics" intro="Revenue, orders and fulfilment at a glance.">
+      <Stats stats={stats} />
+      <div className="analytics-grid">
+        <section className="admin-card analytics-card">
+          <div className="card-head">
+            <div>
+              <h2>Revenue trend</h2>
+              <p>Paid, shipped and delivered · last 14 days</p>
+            </div>
+            <strong className="analytics-period-total">{formatCurrency(periodRevenue / 100)}</strong>
+          </div>
+          <RevenueAreaChart data={daily} />
+        </section>
+        <section className="admin-card analytics-card">
+          <div className="card-head">
+            <div>
+              <h2>Order volume</h2>
+              <p>{periodOrders} orders placed in this period</p>
+            </div>
+          </div>
+          <OrdersBarChart data={daily} />
+        </section>
+      </div>
+      <div className="analytics-grid secondary">
+        <section className="admin-card analytics-card">
+          <div className="card-head"><div><h2>Order status</h2><p>Current fulfilment mix</p></div></div>
+          <StatusDonut status={status} />
+        </section>
+        <section className="admin-card analytics-card">
+          <div className="card-head"><div><h2>Top products</h2><p>By revenue from paid orders</p></div></div>
+          {topProducts.length ? (
+            <div className="top-products-chart">
+              {topProducts.map((product) => {
+                const max = Math.max(...topProducts.map((item) => item.revenue_cents), 1)
+                return (
+                  <div key={product.name} className="top-product-row">
+                    <div>
+                      <b>{product.name}</b>
+                      <small>{product.units} sold · {formatCurrency(product.revenue_cents / 100)}</small>
+                    </div>
+                    <span style={{ '--fill': `${Math.max(8, (product.revenue_cents / max) * 100)}%` }} />
+                  </div>
+                )
+              })}
+            </div>
+          ) : <EmptyState title="No paid sales yet" text="Top products will appear once orders are paid." />}
+        </section>
+      </div>
+    </AdminPage>
+  )
+}
+
+function RevenueAreaChart({ data }) {
+  const points = asArray(data)
+  const width = 640
+  const height = 220
+  const padX = 16
+  const padY = 18
+  const values = points.map((item) => Number(item.revenue_cents) / 100)
+  const max = Math.max(...values, 1)
+  const step = points.length > 1 ? (width - padX * 2) / (points.length - 1) : 0
+  const coords = points.map((item, index) => {
+    const x = padX + index * step
+    const y = height - padY - ((Number(item.revenue_cents) / 100) / max) * (height - padY * 2)
+    return [x, y]
+  })
+  const line = coords.map(([x, y], index) => `${index === 0 ? 'M' : 'L'}${x},${y}`).join(' ')
+  const area = coords.length
+    ? `${line} L${coords[coords.length - 1][0]},${height - padY} L${coords[0][0]},${height - padY} Z`
+    : ''
+  const labels = points.filter((_, index) => index === 0 || index === points.length - 1 || index % 3 === 0)
+
+  return (
+    <div className="chart-frame">
+      <svg viewBox={`0 0 ${width} ${height}`} role="img" aria-label="Revenue over the last 14 days">
+        <defs>
+          <linearGradient id="revenueFill" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="#1f2a37" stopOpacity="0.28" />
+            <stop offset="100%" stopColor="#1f2a37" stopOpacity="0.02" />
+          </linearGradient>
+        </defs>
+        {[0.25, 0.5, 0.75, 1].map((ratio) => {
+          const y = height - padY - ratio * (height - padY * 2)
+          return <line key={ratio} x1={padX} x2={width - padX} y1={y} y2={y} className="chart-grid" />
+        })}
+        {area ? <path d={area} fill="url(#revenueFill)" /> : null}
+        {line ? <path d={line} className="chart-line" fill="none" /> : null}
+        {coords.map(([x, y], index) => (
+          <circle key={points[index].day} cx={x} cy={y} r="3.5" className="chart-dot">
+            <title>{`${new Date(points[index].day).toLocaleDateString()} · ${formatCurrency(values[index])}`}</title>
+          </circle>
+        ))}
+      </svg>
+      <div className="chart-x">
+        {labels.map((item) => (
+          <span key={item.day}>{new Date(item.day).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</span>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function OrdersBarChart({ data }) {
+  const points = asArray(data)
+  const max = Math.max(...points.map((item) => Number(item.order_count)), 1)
+  return (
+    <div className="orders-bars" role="img" aria-label="Orders placed each day">
+      {points.map((item) => {
+        const value = Number(item.order_count)
+        const height = Math.max(4, (value / max) * 100)
+        return (
+          <div key={item.day} className="orders-bar">
+            <span style={{ height: `${height}%` }} title={`${value} orders`} />
+            <small>{new Date(item.day).toLocaleDateString(undefined, { day: 'numeric' })}</small>
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
+function StatusDonut({ status }) {
+  const entries = orderStatuses.map((key) => ({ key, value: Number(status[key] || 0) }))
+  const rawTotal = entries.reduce((sum, item) => sum + item.value, 0)
+  const total = rawTotal || 1
+  const colors = {
+    pending: '#c4a35a',
+    paid: '#3d7a5f',
+    shipped: '#4a6fa5',
+    delivered: '#1f2a37',
+    cancelled: '#a85a45',
+  }
+  let offset = 0
+  const radius = 54
+  const circumference = 2 * Math.PI * radius
+
+  return (
+    <div className="status-donut">
+      <svg viewBox="0 0 140 140" aria-hidden="true">
+        <circle cx="70" cy="70" r={radius} className="donut-track" />
+        {entries.filter((item) => item.value > 0).map((item) => {
+          const length = (item.value / total) * circumference
+          const segment = (
+            <circle
+              key={item.key}
+              cx="70"
+              cy="70"
+              r={radius}
+              className="donut-segment"
+              stroke={colors[item.key]}
+              strokeDasharray={`${length} ${circumference - length}`}
+              strokeDashoffset={-offset}
+            />
+          )
+          offset += length
+          return segment
+        })}
+        <text x="70" y="66" textAnchor="middle" className="donut-total">{rawTotal}</text>
+        <text x="70" y="84" textAnchor="middle" className="donut-label">orders</text>
+      </svg>
+      <ul>
+        {entries.map((item) => (
+          <li key={item.key}><i style={{ background: colors[item.key] }} />{item.key}<b>{item.value}</b></li>
+        ))}
+      </ul>
+    </div>
+  )
 }
 
 export function AdminSettings() {
-  const [tab, setTab] = useState('payments')
+  const { admin } = useAuth()
+  const [tab, setTab] = useState('account')
   const [saving, setSaving] = useState(false)
+  const [passwordSaving, setPasswordSaving] = useState(false)
   const [showPublic, setShowPublic] = useState(false)
   const [showSecret, setShowSecret] = useState(false)
+  const [showCurrent, setShowCurrent] = useState(false)
+  const [showNew, setShowNew] = useState(false)
   const [liveConfirmed, setLiveConfirmed] = useState(false)
   const { data, loading, error, retry, setData } = useAdminData(
     () => api.get('/admin/settings').then(({ data: settings }) => {
@@ -364,91 +685,175 @@ export function AdminSettings() {
     }
   }
 
+  const changePassword = async (event) => {
+    event.preventDefault()
+    const form = event.currentTarget
+    const fields = Object.fromEntries(new FormData(form))
+    if (fields.new_password !== fields.confirm_password) {
+      toast.error('New passwords do not match')
+      return
+    }
+    setPasswordSaving(true)
+    try {
+      const { data: result } = await api.put('/admin/password', {
+        current_password: fields.current_password,
+        new_password: fields.new_password,
+      })
+      toast.success(result.message || 'Password updated')
+      form.reset()
+    } catch (saveError) {
+      toast.error(errorMessage(saveError, 'Could not change password'))
+    } finally {
+      setPasswordSaving(false)
+    }
+  }
+
   return (
-    <AdminPage title="Settings" intro="Manage store availability and Paystack payment keys.">
-      <div className="settings-tabs" role="tablist">
-        <button type="button" role="tab" aria-selected={tab === 'store'} className={tab === 'store' ? 'active' : ''} onClick={() => setTab('store')}>Store</button>
-        <button type="button" role="tab" aria-selected={tab === 'payments'} className={tab === 'payments' ? 'active' : ''} onClick={() => setTab('payments')}>Payments</button>
-      </div>
-
-      {loading ? <LoadingGrid /> : error ? <ErrorState retry={retry} /> : tab === 'store' ? (
-        <section className="admin-card store-toggle-card">
-          <div>
-            <h2>Store purchases</h2>
-            <p>{data.purchases_enabled ? 'Customers can add items and complete checkout.' : 'All items are unavailable for purchase right now.'}</p>
-          </div>
-          <button type="button" className={`store-toggle${data.purchases_enabled ? ' on' : ''}`} onClick={togglePurchases} aria-pressed={data.purchases_enabled}>
-            <span>{data.purchases_enabled ? 'Open' : 'Paused'}</span>
-            <i />
+    <AdminPage title="Settings" intro="Account security, store availability, and payment keys.">
+      <div className="settings-shell">
+        <aside className="settings-nav" role="tablist" aria-label="Settings sections">
+          <button type="button" role="tab" aria-selected={tab === 'account'} className={tab === 'account' ? 'active' : ''} onClick={() => setTab('account')}>
+            <span>Account</span>
+            <small>Password &amp; profile</small>
           </button>
-        </section>
-      ) : (
-        <form className="admin-card payments-settings" onSubmit={savePayments}>
-          <div className={`payment-mode-banner ${mode}${liveConfirmed && mode === 'live' ? ' confirmed' : ''}`}>
-            {mode === 'live'
-              ? (liveConfirmed
-                ? 'LIVE MODE confirmed — Paystack live keys verified. Accepting real payments.'
-                : 'LIVE MODE selected — Save to verify live keys with Paystack before going live.')
-              : 'TEST MODE — No real payments are processed'}
-          </div>
+          <button type="button" role="tab" aria-selected={tab === 'store'} className={tab === 'store' ? 'active' : ''} onClick={() => setTab('store')}>
+            <span>Store</span>
+            <small>Purchases on / off</small>
+          </button>
+          <button type="button" role="tab" aria-selected={tab === 'payments'} className={tab === 'payments' ? 'active' : ''} onClick={() => setTab('payments')}>
+            <span>Payments</span>
+            <small>Paystack keys</small>
+          </button>
+        </aside>
 
-          <div className="payment-mode-row">
-            <div>
-              <h2>Payment mode</h2>
-              <p>Switch between Paystack test and live keys. Live mode is only enabled after Paystack confirms your live keys.</p>
-            </div>
-            <div className="mode-switch" role="group" aria-label="Payment mode">
-              <button type="button" className={mode === 'test' ? 'active' : ''} onClick={() => setMode('test')}>Test</button>
-              <button type="button" className={mode === 'live' ? 'active live' : ''} onClick={() => setMode('live')}>Live</button>
-            </div>
-          </div>
-
-          <label>
-            Paystack Public Key
-            <span className="secret-field">
-              <input
-                type={showPublic ? 'text' : 'password'}
-                value={publicKey}
-                onChange={(event) => setPublicKey(event.target.value)}
-                placeholder={mode === 'live' ? 'pk_live_…' : 'pk_test_…'}
-                autoComplete="off"
-                spellCheck={false}
-              />
-              <button type="button" className="reveal-key" onClick={() => setShowPublic((value) => !value)} aria-label={showPublic ? 'Hide public key' : 'Show public key'}>
-                {showPublic ? <EyeOff /> : <Eye />}
+        <div className="settings-panel">
+          {loading ? <LoadingGrid /> : error ? <ErrorState retry={retry} /> : tab === 'account' ? (
+            <section className="admin-card account-settings">
+              <div className="card-head">
+                <div>
+                  <h2>Admin account</h2>
+                  <p>Update the password used to sign in to the admin panel.</p>
+                </div>
+              </div>
+              <div className="account-profile">
+                <span>{(admin?.name || 'A').split(' ').map((part) => part[0]).join('').slice(0, 2)}</span>
+                <div>
+                  <b>{admin?.name || 'Administrator'}</b>
+                  <small>{admin?.email || '—'}</small>
+                </div>
+              </div>
+              <form className="stack-form password-form" onSubmit={changePassword}>
+                <h3>Change password</h3>
+                <label>
+                  Current password
+                  <span className="secret-field">
+                    <input name="current_password" type={showCurrent ? 'text' : 'password'} required autoComplete="current-password" />
+                    <button type="button" className="reveal-key" onClick={() => setShowCurrent((value) => !value)} aria-label={showCurrent ? 'Hide current password' : 'Show current password'}>
+                      {showCurrent ? <EyeOff /> : <Eye />}
+                    </button>
+                  </span>
+                </label>
+                <label>
+                  New password
+                  <span className="secret-field">
+                    <input name="new_password" type={showNew ? 'text' : 'password'} required minLength={8} autoComplete="new-password" />
+                    <button type="button" className="reveal-key" onClick={() => setShowNew((value) => !value)} aria-label={showNew ? 'Hide new password' : 'Show new password'}>
+                      {showNew ? <EyeOff /> : <Eye />}
+                    </button>
+                  </span>
+                </label>
+                <label>
+                  Confirm new password
+                  <input name="confirm_password" type="password" required minLength={8} autoComplete="new-password" />
+                </label>
+                <p className="settings-hint">Use at least 8 characters. You will stay signed in after updating.</p>
+                <div className="form-actions">
+                  <button type="submit" className="admin-button primary" disabled={passwordSaving}>
+                    <Check /> {passwordSaving ? 'Updating…' : 'Update password'}
+                  </button>
+                </div>
+              </form>
+            </section>
+          ) : tab === 'store' ? (
+            <section className="admin-card store-toggle-card">
+              <div>
+                <h2>Store purchases</h2>
+                <p>{data.purchases_enabled ? 'Customers can add items and complete checkout.' : 'All items are unavailable for purchase right now.'}</p>
+              </div>
+              <button type="button" className={`store-toggle${data.purchases_enabled ? ' on' : ''}`} onClick={togglePurchases} aria-pressed={data.purchases_enabled}>
+                <span>{data.purchases_enabled ? 'Open' : 'Paused'}</span>
+                <i />
               </button>
-            </span>
-          </label>
+            </section>
+          ) : (
+            <form className="admin-card payments-settings" onSubmit={savePayments}>
+              <div className={`payment-mode-banner ${mode}${liveConfirmed && mode === 'live' ? ' confirmed' : ''}`}>
+                {mode === 'live'
+                  ? (liveConfirmed
+                    ? 'LIVE MODE confirmed — Paystack live keys verified. Accepting real payments.'
+                    : 'LIVE MODE selected — Save to verify live keys with Paystack before going live.')
+                  : 'TEST MODE — No real payments are processed'}
+              </div>
 
-          <label>
-            Paystack Secret Key
-            <span className="secret-field">
-              <input
-                type={showSecret ? 'text' : 'password'}
-                value={secretKey}
-                onChange={(event) => setSecretKey(event.target.value)}
-                placeholder={mode === 'live' ? 'sk_live_…' : 'sk_test_…'}
-                autoComplete="off"
-                spellCheck={false}
-              />
-              <button type="button" className="reveal-key" onClick={() => setShowSecret((value) => !value)} aria-label={showSecret ? 'Hide secret key' : 'Show secret key'}>
-                {showSecret ? <EyeOff /> : <Eye />}
-              </button>
-            </span>
-          </label>
+              <div className="payment-mode-row">
+                <div>
+                  <h2>Payment mode</h2>
+                  <p>Switch between Paystack test and live keys. Live mode is only enabled after Paystack confirms your live keys.</p>
+                </div>
+                <div className="mode-switch" role="group" aria-label="Payment mode">
+                  <button type="button" className={mode === 'test' ? 'active' : ''} onClick={() => setMode('test')}>Test</button>
+                  <button type="button" className={mode === 'live' ? 'active live' : ''} onClick={() => setMode('live')}>Live</button>
+                </div>
+              </div>
 
-          <p className="settings-hint">
-            Keys for <strong>{mode}</strong> mode are shown above.
-            {mode === 'live' ? ' Saving will contact Paystack to confirm these are real live keys before live mode is activated.' : ' Switch to Live and save with pk_live_ / sk_live_ keys to go live.'}
-          </p>
+              <label>
+                Paystack Public Key
+                <span className="secret-field">
+                  <input
+                    type={showPublic ? 'text' : 'password'}
+                    value={publicKey}
+                    onChange={(event) => setPublicKey(event.target.value)}
+                    placeholder={mode === 'live' ? 'pk_live_…' : 'pk_test_…'}
+                    autoComplete="off"
+                    spellCheck={false}
+                  />
+                  <button type="button" className="reveal-key" onClick={() => setShowPublic((value) => !value)} aria-label={showPublic ? 'Hide public key' : 'Show public key'}>
+                    {showPublic ? <EyeOff /> : <Eye />}
+                  </button>
+                </span>
+              </label>
 
-          <div className="form-actions">
-            <button type="submit" className="admin-button primary" disabled={saving}>
-              <Check /> {saving ? (mode === 'live' ? 'Verifying live keys…' : 'Saving…') : 'Save payment settings'}
-            </button>
-          </div>
-        </form>
-      )}
+              <label>
+                Paystack Secret Key
+                <span className="secret-field">
+                  <input
+                    type={showSecret ? 'text' : 'password'}
+                    value={secretKey}
+                    onChange={(event) => setSecretKey(event.target.value)}
+                    placeholder={mode === 'live' ? 'sk_live_…' : 'sk_test_…'}
+                    autoComplete="off"
+                    spellCheck={false}
+                  />
+                  <button type="button" className="reveal-key" onClick={() => setShowSecret((value) => !value)} aria-label={showSecret ? 'Hide secret key' : 'Show secret key'}>
+                    {showSecret ? <EyeOff /> : <Eye />}
+                  </button>
+                </span>
+              </label>
+
+              <p className="settings-hint">
+                Keys for <strong>{mode}</strong> mode are shown above.
+                {mode === 'live' ? ' Saving will contact Paystack to confirm these are real live keys before live mode is activated.' : ' Switch to Live and save with pk_live_ / sk_live_ keys to go live.'}
+              </p>
+
+              <div className="form-actions">
+                <button type="submit" className="admin-button primary" disabled={saving}>
+                  <Check /> {saving ? (mode === 'live' ? 'Verifying live keys…' : 'Saving…') : 'Save payment settings'}
+                </button>
+              </div>
+            </form>
+          )}
+        </div>
+      </div>
     </AdminPage>
   )
 }

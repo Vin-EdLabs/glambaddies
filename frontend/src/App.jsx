@@ -1,8 +1,9 @@
 import { useEffect } from 'react'
-import { BrowserRouter, Route, Routes, useLocation } from 'react-router-dom'
+import { BrowserRouter, Navigate, Route, Routes, useLocation } from 'react-router-dom'
 import { Toaster } from 'react-hot-toast'
 import { AdminLayout, StoreLayout } from './components'
 import { AuthProvider, CartProvider } from './contexts'
+import { ADMIN_PATH } from './adminPath'
 import { About, Account, Checkout, Home, InfoPage, Login, NotFound, OrderConfirmation, ProductDetail, Shop, TrackOrder } from './pages/StorePages'
 import { AdminCategories, AdminCustomers, AdminLogin, AdminOrderDetail, AdminOrders, AdminProducts, AdminSettings, Analytics, Dashboard, ProductForm } from './pages/AdminPages'
 
@@ -45,8 +46,8 @@ export default function App() {
         <Route path="faq" element={<InfoPage type="faq" />} />
         <Route path="*" element={<NotFound />} />
       </Route>
-      <Route path="/admin/login" element={<AdminLogin />} />
-      <Route path="/admin" element={<AdminLayout />}>
+      <Route path={`${ADMIN_PATH}/login`} element={<AdminLogin />} />
+      <Route path={ADMIN_PATH} element={<AdminLayout />}>
         <Route index element={<Dashboard />} />
         <Route path="products" element={<AdminProducts />} />
         <Route path="products/new" element={<ProductForm />} />
@@ -58,6 +59,9 @@ export default function App() {
         <Route path="analytics" element={<Analytics />} />
         <Route path="settings" element={<AdminSettings />} />
       </Route>
+      {/* Old /admin URLs are retired — send visitors to the store. */}
+      <Route path="/admin/*" element={<Navigate to="/" replace />} />
+      <Route path="/admin" element={<Navigate to="/" replace />} />
     </Routes>
     <Toaster position="top-center" toastOptions={{ duration: 3000 }} />
   </CartProvider></AuthProvider></BrowserRouter>

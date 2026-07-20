@@ -5,7 +5,7 @@ import toast from 'react-hot-toast'
 import { ArrowLeft, ArrowRight, Check, ChevronDown, Clock3, Filter, Heart, Minus, Package, Plus, RotateCcw, ShieldCheck, ShoppingBag, Truck, X } from 'lucide-react'
 import { EmptyState, ErrorState, LoadingGrid, ProductCard, CopyValue } from '../components'
 import { useAuth, useCart } from '../contexts'
-import api, { errorMessage, mapProduct } from '../services/api'
+import api, { asArray, errorMessage, mapProduct, mapProducts } from '../services/api'
 import { formatCurrency } from '../utils'
 
 function useApi(load, dependencies) {
@@ -22,8 +22,9 @@ function useApi(load, dependencies) {
 
 export function Home() {
   const { data: products, loading, error, retry } = useApi(
-    () => api.get('/products', { params: { limit: 4, sort: 'newest' } }).then(({ data }) => data.products.map(mapProduct)), [],
+    () => api.get('/products', { params: { limit: 4, sort: 'newest' } }).then(({ data }) => mapProducts(data?.products)), [],
   )
+  const list = asArray(products)
   const edits = [
     {
       to: '/shop?category=fashion',
@@ -64,7 +65,7 @@ export function Home() {
         <Link className="button light-button" to="/shop">Discover the collection <ArrowRight /></Link>
       </div>
     </section>
-    <section className="section"><div className="section-head"><div><span className="eyebrow">Just in</span><h2>New expressions</h2></div><Link to="/shop">View all <ArrowRight /></Link></div>{loading ? <LoadingGrid /> : error ? <ErrorState retry={retry} /> : products.length ? <div className="product-grid">{products.map((product) => <ProductCard product={product} key={product.id} />)}</div> : <EmptyState title="New pieces coming soon" text="Our next edit is being prepared." action="Browse the collection" to="/shop" />}</section>
+    <section className="section"><div className="section-head"><div><span className="eyebrow">Just in</span><h2>New expressions</h2></div><Link to="/shop">View all <ArrowRight /></Link></div>{loading ? <LoadingGrid /> : error ? <ErrorState retry={retry} /> : list.length ? <div className="product-grid">{list.map((product) => <ProductCard product={product} key={product.id} />)}</div> : <EmptyState title="New pieces coming soon" text="Our next edit is being prepared." action="Browse the collection" to="/shop" />}</section>
     <section className="editorial-grid">{edits.map((edit) => <Link to={edit.to} key={edit.to}><img src={edit.image} alt={edit.alt} /><div><span className="eyebrow">{edit.eyebrow}</span><h2>{edit.title}</h2><span>Shop now <ArrowRight /></span></div></Link>)}</section>
     <section className="manifesto"><span className="eyebrow">Our point of view</span><h2>Buy less. Choose beautifully.<br />Wear it your way.</h2><p>We bring together independent voices and enduring design, selected for quality, character and relevance beyond a single season.</p><Link to="/about">Discover Vublishop <ArrowRight /></Link></section>
     <section className="benefits"><div><Truck /><h3>Complimentary delivery</h3><p>On orders over $50</p></div><div><RotateCcw /><h3>Considered returns</h3><p>Easy returns within 14 days</p></div><div><ShieldCheck /><h3>Secure payment</h3><p>Protected checkout with Paystack</p></div></section>
@@ -82,32 +83,39 @@ export function Shop() {
     () => Promise.all([
       api.get('/products', { params: { category: category || undefined, q: query || undefined, sort, limit: 100 } }),
       api.get('/categories'),
-    ]).then(([productsResult, categoriesResult]) => ({ products: productsResult.data.products.map(mapProduct), pagination: productsResult.data.pagination, categories: categoriesResult.data.categories })),
+    ]).then(([productsResult, categoriesResult]) => ({
+      products: mapProducts(productsResult.data?.products),
+      pagination: productsResult.data?.pagination || { total: 0 },
+      categories: asArray(categoriesResult.data?.categories),
+    })),
     [requestKey],
   )
-  const title = data?.categories.find((item) => item.slug === category)?.name || (query ? `Results for “${query}”` : 'Shop all')
+  const products = asArray(data?.products)
+  const categories = asArray(data?.categories)
+  const title = categories.find((item) => item.slug === category)?.name || (query ? `Results for “${query}”` : 'Shop all')
   return <div className="shop-page"><div className="page-title"><span className="eyebrow">The collection</span><h1>{title}</h1><p>A considered wardrobe of directional essentials and enduring statements.</p></div>
-    <div className="catalog-toolbar"><button onClick={() => setMobileFilters(true)}><Filter /> Filters</button><span>{data?.pagination.total || 0} pieces</span><label>Sort by <select value={sort} onChange={(event) => setSort(event.target.value)}><option value="newest">Featured</option><option value="price_asc">Price: low to high</option><option value="price_desc">Price: high to low</option><option value="name_asc">Name</option></select><ChevronDown /></label></div>
-    <div className="catalog"><aside className={mobileFilters ? 'open' : ''}><button className="filter-close" onClick={() => setMobileFilters(false)}><X /></button><FilterGroup title="Category" values={data?.categories || []} active={category} /></aside>
-      {loading ? <LoadingGrid /> : error ? <ErrorState retry={retry} /> : data.products.length ? <div className="product-grid">{data.products.map((product) => <ProductCard product={product} key={product.id} />)}</div> : <EmptyState title="No pieces found" text="Try changing your filters or search phrase." action="View all products" to="/shop" />}</div>
+    <div className="catalog-toolbar"><button onClick={() => setMobileFilters(true)}><Filter /> Filters</button><span>{data?.pagination?.total || 0} pieces</span><label>Sort by <select value={sort} onChange={(event) => setSort(event.target.value)}><option value="newest">Featured</option><option value="price_asc">Price: low to high</option><option value="price_desc">Price: high to low</option><option value="name_asc">Name</option></select><ChevronDown /></label></div>
+    <div className="catalog"><aside className={mobileFilters ? 'open' : ''}><button className="filter-close" onClick={() => setMobileFilters(false)}><X /></button><FilterGroup title="Category" values={categories} active={category} /></aside>
+      {loading ? <LoadingGrid /> : error ? <ErrorState retry={retry} /> : products.length ? <div className="product-grid">{products.map((product) => <ProductCard product={product} key={product.id} />)}</div> : <EmptyState title="No pieces found" text="Try changing your filters or search phrase." action="View all products" to="/shop" />}</div>
   </div>
 }
 
 function FilterGroup({ title, values, active }) {
-  return <div className="filter-group"><h3>{title}<Minus /></h3>{values.map((value) => <label key={value.id}><Link to={`/shop?category=${encodeURIComponent(value.slug)}`}><input type="checkbox" readOnly checked={active === value.slug} /> <span>{value.name}</span></Link></label>)}</div>
+  return <div className="filter-group"><h3>{title}<Minus /></h3>{asArray(values).map((value) => <label key={value.id}><Link to={`/shop?category=${encodeURIComponent(value.slug)}`}><input type="checkbox" readOnly checked={active === value.slug} /> <span>{value.name}</span></Link></label>)}</div>
 }
 
 export function ProductDetail() {
   const { id } = useParams()
   const { addItem } = useCart()
   const [size, setSize] = useState('')
-  const { data: product, loading, error, retry } = useApi(() => api.get(`/products/${id}`).then(({ data }) => mapProduct(data.product)), [id])
+  const { data: product, loading, error, retry } = useApi(() => api.get(`/products/${id}`).then(({ data }) => mapProduct(data?.product)), [id])
   if (loading) return <div className="section"><LoadingGrid /></div>
   if (error?.status === 404) return <EmptyState title="Piece not found" text="This item may no longer be available." action="Continue shopping" to="/shop" />
   if (error) return <ErrorState retry={retry} />
-  const images = product.images.length ? product.images : [product.image]
-  const add = () => product.sizes?.length && !size ? toast.error('Please select a size') : addItem(product, size || undefined)
-  return <div className="product-detail"><div className="product-gallery">{images.map((image, index) => <img src={image} alt={`${product.name} view ${index + 1}`} key={`${image}-${index}`} />)}</div><div className="product-summary"><span className="eyebrow">{product.brand || product.category}</span><h1>{product.name}</h1><div className="detail-price">{formatCurrency(product.price)}</div><p>{product.description}</p>{product.sizes?.length > 0 && <><div className="size-head"><strong>Select size</strong><button>Size guide</button></div><div className="size-grid">{product.sizes.map((item) => <button className={size === item ? 'selected' : ''} onClick={() => setSize(item)} key={item}>{item}</button>)}</div></>}<button className="button full" disabled={!product.stock} onClick={add}>{product.stock ? 'Add to bag' : 'Sold out'} <ShoppingBag /></button><button className="wishlist"><Heart /> Add to wishlist</button><details open><summary>Details & composition <Plus /></summary><p>{product.description || 'Thoughtfully made from premium materials.'}</p></details><details><summary>Delivery & returns <Plus /></summary><p>International delivery times vary by destination. Returns are accepted within 14 days.</p></details></div></div>
+  const images = asArray(product?.images).length ? asArray(product.images) : [product?.image].filter(Boolean)
+  const sizes = asArray(product?.sizes)
+  const add = () => sizes.length && !size ? toast.error('Please select a size') : addItem(product, size || undefined)
+  return <div className="product-detail"><div className="product-gallery">{images.map((image, index) => <img src={image} alt={`${product.name} view ${index + 1}`} key={`${image}-${index}`} />)}</div><div className="product-summary"><span className="eyebrow">{product.brand || product.category}</span><h1>{product.name}</h1><div className="detail-price">{formatCurrency(product.price)}</div><p>{product.description}</p>{sizes.length > 0 && <><div className="size-head"><strong>Select size</strong><button>Size guide</button></div><div className="size-grid">{sizes.map((item) => <button className={size === item ? 'selected' : ''} onClick={() => setSize(item)} key={item}>{item}</button>)}</div></>}<button className="button full" disabled={!product.stock} onClick={add}>{product.stock ? 'Add to bag' : 'Sold out'} <ShoppingBag /></button><button className="wishlist"><Heart /> Add to wishlist</button><details open><summary>Details & composition <Plus /></summary><p>{product.description || 'Thoughtfully made from premium materials.'}</p></details><details><summary>Delivery & returns <Plus /></summary><p>International delivery times vary by destination. Returns are accepted within 14 days.</p></details></div></div>
 }
 
 export function Checkout() {
@@ -297,7 +305,7 @@ export function TrackOrder() {
           </div>
           {order.items?.length > 0 && (
             <ul className="track-items">
-              {order.items.map((item, index) => (
+              {asArray(order.items).map((item, index) => (
                 <li key={`${item.product_name}-${index}`}>
                   <span>{item.product_name}</span>
                   <small>×{item.quantity}</small>
@@ -350,10 +358,11 @@ export function Login({ register = false }) {
 export function Account() {
   const { customer, logout } = useAuth()
   const navigate = useNavigate()
-  const { data: orders, loading, error, retry } = useApi(() => customer ? api.get('/orders').then(({ data }) => data.orders) : Promise.resolve([]), [customer?.id])
+  const { data: orders, loading, error, retry } = useApi(() => customer ? api.get('/orders').then(({ data }) => asArray(data?.orders)) : Promise.resolve([]), [customer?.id])
   useEffect(() => { if (!customer) navigate('/login') }, [customer, navigate])
   if (!customer) return null
-  return <div className="account-page"><div className="page-title"><span className="eyebrow">Private client</span><h1>Good afternoon, {customer.name}.</h1></div><div className="account-grid"><aside><button className="active">Order history</button><button type="button" onClick={() => navigate('/track-order')}>Track order</button><button type="button" onClick={() => navigate('/shop')}>Continue shopping</button><button onClick={() => { logout(); navigate('/') }}>Sign out</button></aside><section><h2>Order history</h2>{loading ? <LoadingGrid /> : error ? <ErrorState retry={retry} /> : orders.length ? orders.map((order) => <div className="account-order" key={order.id}><div><small>Order ID</small><CopyValue value={String(order.id)} label="Copy order ID" /></div><div><small>Date</small><b>{new Date(order.created_at).toLocaleDateString()}</b></div><div><small>Total</small><b>{formatCurrency(Number(order.total ?? order.total_cents / 100))}</b></div><span className={`status ${order.status}`}>{order.status}</span><Link to={`/track-order`}>Track <ArrowRight /></Link></div>) : <EmptyState title="No orders yet" text="Your order history will appear here." action="Start shopping" to="/shop" />}</section></div></div>
+  const orderList = asArray(orders)
+  return <div className="account-page"><div className="page-title"><span className="eyebrow">Private client</span><h1>Good afternoon, {customer.name}.</h1></div><div className="account-grid"><aside><button className="active">Order history</button><button type="button" onClick={() => navigate('/track-order')}>Track order</button><button type="button" onClick={() => navigate('/shop')}>Continue shopping</button><button onClick={() => { logout(); navigate('/') }}>Sign out</button></aside><section><h2>Order history</h2>{loading ? <LoadingGrid /> : error ? <ErrorState retry={retry} /> : orderList.length ? orderList.map((order) => <div className="account-order" key={order.id}><div><small>Order ID</small><CopyValue value={String(order.id)} label="Copy order ID" /></div><div><small>Date</small><b>{new Date(order.created_at).toLocaleDateString()}</b></div><div><small>Total</small><b>{formatCurrency(Number(order.total ?? order.total_cents / 100))}</b></div><span className={`status ${order.status}`}>{order.status}</span><Link to={`/track-order`}>Track <ArrowRight /></Link></div>) : <EmptyState title="No orders yet" text="Your order history will appear here." action="Start shopping" to="/shop" />}</section></div></div>
 }
 
 export function About() {

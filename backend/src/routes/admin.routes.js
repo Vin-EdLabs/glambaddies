@@ -9,6 +9,7 @@ router.post('/login', controller.login);
 router.use(adminAuth);
 
 router.get('/dashboard', controller.dashboard);
+router.get('/analytics', controller.analytics);
 router.get('/settings', controller.getSettings);
 router.put('/settings', controller.updateSettings);
 
@@ -23,8 +24,14 @@ router.put('/categories/:id', controller.updateCategory);
 router.delete('/categories/:id', controller.deleteCategory);
 
 router.get('/orders', controller.listOrders);
+router.delete('/orders', controller.clearOrders);
+router.post('/orders/clear', controller.clearOrders);
 router.get('/orders/:id', controller.getOrder);
 router.put('/orders/:id/status', controller.updateOrderStatus);
+router.delete('/orders/:id', controller.deleteOrder);
+router.post('/orders/:id/delete', controller.deleteOrder);
+
+router.put('/password', controller.changePassword);
 
 router.get('/users', controller.listUsers);
 

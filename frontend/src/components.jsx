@@ -4,7 +4,8 @@ import toast from 'react-hot-toast'
 import { ArrowRight, BarChart3, Box, Check, ChevronDown, Copy, Heart, LayoutDashboard, LogOut, Menu, Minus, Package, Plus, Search, Settings, ShoppingBag, Tag, Trash2, User, Users, X } from 'lucide-react'
 import { useAuth, useCart } from './contexts'
 import { formatCurrency } from './utils'
-import api from './services/api'
+import api, { asArray } from './services/api'
+import { ADMIN_PATH } from './adminPath'
 
 export function CopyValue({ value, label = 'Copy' }) {
   const [copied, setCopied] = useState(false)
@@ -56,6 +57,58 @@ export function ErrorState({ retry }) {
   return <div className="empty-state"><h2>Something went wrong</h2><p>We could not load this content. Please try again.</p><button className="button" onClick={retry}>Try again</button></div>
 }
 
+export function ConfirmDialog({
+  open,
+  title,
+  message,
+  detail,
+  confirmLabel = 'Delete',
+  cancelLabel = 'Cancel',
+  busy = false,
+  onConfirm,
+  onCancel,
+}) {
+  useEffect(() => {
+    if (!open) return undefined
+    const onKey = (event) => {
+      if (event.key === 'Escape' && !busy) onCancel?.()
+    }
+    document.addEventListener('keydown', onKey)
+    const previous = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    return () => {
+      document.removeEventListener('keydown', onKey)
+      document.body.style.overflow = previous
+    }
+  }, [open, busy, onCancel])
+
+  if (!open) return null
+
+  return (
+    <div className="confirm-overlay" role="presentation" onClick={() => { if (!busy) onCancel?.() }}>
+      <div
+        className="confirm-dialog"
+        role="alertdialog"
+        aria-modal="true"
+        aria-labelledby="confirm-title"
+        aria-describedby="confirm-message"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <div className="confirm-icon" aria-hidden="true"><Trash2 /></div>
+        <h2 id="confirm-title">{title}</h2>
+        <p id="confirm-message">{message}</p>
+        {detail ? <p className="confirm-detail">{detail}</p> : null}
+        <div className="confirm-actions">
+          <button type="button" className="admin-button" disabled={busy} onClick={onCancel}>{cancelLabel}</button>
+          <button type="button" className="admin-button danger" disabled={busy} onClick={onConfirm}>
+            <Trash2 /> {busy ? 'Working…' : confirmLabel}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 function CartDrawer() {
   const { items, subtotal, isOpen, setIsOpen, removeItem, updateQuantity } = useCart()
   return <>
@@ -83,10 +136,12 @@ export function StoreLayout() {
   const category = new URLSearchParams(location.search).get('category')
   const [categories, setCategories] = useState([])
   useEffect(() => {
-    api.get('/categories').then(({ data }) => setCategories(data.categories)).catch(() => {})
+    api.get('/categories')
+      .then(({ data }) => setCategories(asArray(data?.categories)))
+      .catch(() => setCategories([]))
   }, [])
   const CATEGORY_ORDER = ['fashion', 'electronics', 'games', 'home-living', 'beauty', 'sports']
-  const orderedCategories = [...categories].sort((a, b) => {
+  const orderedCategories = asArray(categories).slice().sort((a, b) => {
     const ai = CATEGORY_ORDER.indexOf(a.slug)
     const bi = CATEGORY_ORDER.indexOf(b.slug)
     return (ai === -1 ? CATEGORY_ORDER.length : ai) - (bi === -1 ? CATEGORY_ORDER.length : bi)
@@ -100,7 +155,8 @@ export function StoreLayout() {
     <header className="site-header">
       <button className="mobile-menu" onClick={() => setMenu(!menu)}><Menu /></button>
       <Link className="logo" to="/" aria-label="Vublishop home">
-        <img src="/logo.png" alt="Vublishop" />
+        <img src="/logo.png" alt="" />
+        <span className="logo-wordmark">Vublishop</span>
       </Link>
       <nav className={menu ? 'open' : ''}>
         {navLinks.map((link) => (
@@ -125,18 +181,18 @@ export function StoreLayout() {
 }
 
 const adminNav = [
-  ['Overview', '/admin', LayoutDashboard], ['Products', '/admin/products', Box], ['Orders', '/admin/orders', Package],
-  ['Categories', '/admin/categories', Tag], ['Customers', '/admin/customers', Users], ['Analytics', '/admin/analytics', BarChart3],
-  ['Settings', '/admin/settings', Settings],
+  ['Overview', ADMIN_PATH, LayoutDashboard], ['Products', `${ADMIN_PATH}/products`, Box], ['Orders', `${ADMIN_PATH}/orders`, Package],
+  ['Categories', `${ADMIN_PATH}/categories`, Tag], ['Customers', `${ADMIN_PATH}/customers`, Users], ['Analytics', `${ADMIN_PATH}/analytics`, BarChart3],
+  ['Settings', `${ADMIN_PATH}/settings`, Settings],
 ]
 
 export function AdminLayout() {
   const [open, setOpen] = useState(false)
   const { admin, logout } = useAuth()
   const navigate = useNavigate()
-  if (!admin || !localStorage.getItem('vub_admin_token')) return <Navigate to="/admin/login" replace />
+  if (!admin || !localStorage.getItem('vub_admin_token')) return <Navigate to={`${ADMIN_PATH}/login`} replace />
   return <div className="admin-shell">
-    <aside className={open ? 'open' : ''}><div className="admin-brand"><img src="/logo.png" alt="" className="admin-brand-logo" /><strong>VUBLISHOP</strong><button onClick={() => setOpen(false)}><X /></button></div><nav>{adminNav.map(([label, to, Icon]) => <NavLink to={to} key={to} end={to === '/admin'} onClick={() => setOpen(false)}><Icon />{label}</NavLink>)}</nav><button className="admin-logout" onClick={() => { logout('admin'); navigate('/admin/login') }}><LogOut />Sign out</button></aside>
+    <aside className={open ? 'open' : ''}><div className="admin-brand"><img src="/logo.png" alt="" className="admin-brand-logo" /><strong>VUBLISHOP</strong><button onClick={() => setOpen(false)}><X /></button></div><nav>{adminNav.map(([label, to, Icon]) => <NavLink to={to} key={to} end={to === ADMIN_PATH} onClick={() => setOpen(false)}><Icon />{label}</NavLink>)}</nav><button className="admin-logout" onClick={() => { logout('admin'); navigate(`${ADMIN_PATH}/login`) }}><LogOut />Sign out</button></aside>
     <section className="admin-main"><header><button className="admin-menu" onClick={() => setOpen(true)}><Menu /></button><div className="admin-search"><Search /><input placeholder="Search anything..." /></div><div className="admin-user"><span>SC</span><div><strong>{admin.name}</strong><small>Administrator</small></div><ChevronDown /></div></header><Outlet /></section>
   </div>
 }

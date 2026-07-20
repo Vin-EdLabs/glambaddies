@@ -59,6 +59,91 @@ exports.dashboard = async (req, res, next) => {
   }
 };
 
+// GET /api/admin/analytics — chart series for admin analytics page
+exports.analytics = async (req, res, next) => {
+  try {
+    const days = Math.min(Math.max(Number(req.query.days) || 14, 7), 90);
+
+    const [summary, daily, statusRows, topProducts] = await Promise.all([
+      db.query(`
+        SELECT
+          (SELECT COUNT(*)::int FROM orders) AS total_orders,
+          (SELECT COUNT(*)::int FROM orders WHERE status = 'pending') AS pending_orders,
+          (SELECT COUNT(*)::int FROM users) AS total_users,
+          (SELECT COUNT(*)::int FROM products WHERE is_active) AS active_products,
+          (SELECT COALESCE(SUM(total_cents), 0)::bigint
+           FROM orders WHERE status IN ('paid', 'shipped', 'delivered')) AS revenue_cents,
+          (SELECT COALESCE(AVG(total_cents), 0)::bigint
+           FROM orders WHERE status IN ('paid', 'shipped', 'delivered')) AS avg_order_cents
+      `),
+      db.query(
+        `
+        WITH days AS (
+          SELECT generate_series(
+            (CURRENT_DATE - ($1::int - 1) * INTERVAL '1 day')::date,
+            CURRENT_DATE,
+            '1 day'::interval
+          )::date AS day
+        )
+        SELECT
+          d.day,
+          COALESCE(SUM(o.total_cents) FILTER (
+            WHERE o.status IN ('paid', 'shipped', 'delivered')
+          ), 0)::bigint AS revenue_cents,
+          COUNT(o.id)::int AS order_count
+        FROM days d
+        LEFT JOIN orders o ON o.created_at::date = d.day
+        GROUP BY d.day
+        ORDER BY d.day ASC
+        `,
+        [days]
+      ),
+      db.query(`
+        SELECT status, COUNT(*)::int AS count
+        FROM orders
+        GROUP BY status
+        ORDER BY count DESC
+      `),
+      db.query(`
+        SELECT
+          oi.product_name,
+          SUM(oi.quantity)::int AS units,
+          COALESCE(SUM(oi.unit_price_cents * oi.quantity), 0)::bigint AS revenue_cents
+        FROM order_items oi
+        JOIN orders o ON o.id = oi.order_id
+        WHERE o.status IN ('paid', 'shipped', 'delivered')
+        GROUP BY oi.product_name
+        ORDER BY revenue_cents DESC
+        LIMIT 5
+      `),
+    ]);
+
+    const statusMap = Object.fromEntries(
+      ORDER_STATUSES.map((status) => [status, 0])
+    );
+    for (const row of statusRows.rows) {
+      statusMap[row.status] = row.count;
+    }
+
+    res.json({
+      stats: summary.rows[0],
+      daily: daily.rows.map((row) => ({
+        day: row.day,
+        revenue_cents: Number(row.revenue_cents),
+        order_count: row.order_count,
+      })),
+      status: statusMap,
+      top_products: topProducts.rows.map((row) => ({
+        name: row.product_name,
+        units: row.units,
+        revenue_cents: Number(row.revenue_cents),
+      })),
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
 // GET /api/admin/settings
 exports.getSettings = async (req, res, next) => {
   try {
@@ -605,6 +690,78 @@ exports.updateOrderStatus = async (req, res, next) => {
     );
     if (rows.length === 0) throw new ApiError(404, 'Order not found');
     res.json({ order: rows[0] });
+  } catch (err) {
+    next(err);
+  }
+};
+
+// DELETE /api/admin/orders/:id  (also POST /api/admin/orders/:id/delete)
+exports.deleteOrder = async (req, res, next) => {
+  try {
+    const id = Number(req.params.id);
+    if (!Number.isInteger(id) || id < 1) {
+      throw new ApiError(400, 'Invalid order id');
+    }
+    const { rows } = await db.query(
+      'DELETE FROM orders WHERE id = $1 RETURNING id',
+      [id]
+    );
+    if (rows.length === 0) throw new ApiError(404, 'Order not found');
+    res.json({ message: 'Order deleted', id: rows[0].id });
+  } catch (err) {
+    next(err);
+  }
+};
+
+// DELETE /api/admin/orders — remove every order (items/payments cascade)
+// also POST /api/admin/orders/clear
+exports.clearOrders = async (req, res, next) => {
+  try {
+    const { rowCount } = await db.query('DELETE FROM orders');
+    res.json({
+      message: rowCount
+        ? `Deleted ${rowCount} order${rowCount === 1 ? '' : 's'}`
+        : 'No orders to delete',
+      deleted: rowCount,
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
+// PUT /api/admin/password { current_password, new_password }
+exports.changePassword = async (req, res, next) => {
+  try {
+    const { current_password, new_password } = req.body || {};
+    if (!current_password || !new_password) {
+      throw new ApiError(400, 'current_password and new_password are required');
+    }
+    if (String(new_password).length < 8) {
+      throw new ApiError(400, 'New password must be at least 8 characters');
+    }
+
+    const adminId = Number(req.admin?.id || req.admin?.sub);
+    if (!Number.isInteger(adminId) || adminId < 1) {
+      throw new ApiError(401, 'Not authenticated');
+    }
+
+    const { rows } = await db.query(
+      'SELECT id, password_hash FROM admins WHERE id = $1',
+      [adminId]
+    );
+    const admin = rows[0];
+    if (!admin) throw new ApiError(404, 'Admin not found');
+
+    const ok = await bcrypt.compare(current_password, admin.password_hash);
+    if (!ok) throw new ApiError(401, 'Current password is incorrect');
+
+    const password_hash = await bcrypt.hash(String(new_password), 10);
+    await db.query('UPDATE admins SET password_hash = $1 WHERE id = $2', [
+      password_hash,
+      adminId,
+    ]);
+
+    res.json({ message: 'Password updated successfully' });
   } catch (err) {
     next(err);
   }
