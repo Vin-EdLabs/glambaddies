@@ -147,6 +147,7 @@
   border-radius: 8px;
   padding: 0.8rem 0.9rem;
   width: 100%;
+  font-size: 16px;
 }
 @media (max-width: 900px) {
   .settings-shell {
@@ -235,6 +236,7 @@
   border-radius: 8px;
   padding: 0.85rem 2.8rem 0.85rem 0.9rem;
   background: white;
+  font-size: 16px;
 }
 .reveal-key {
   position: absolute;
