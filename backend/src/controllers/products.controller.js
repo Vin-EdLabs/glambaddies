@@ -26,11 +26,30 @@ const PRODUCT_SELECT = `
   LEFT JOIN categories c ON c.id = p.category_id
 `;
 
+async function catalogueRevision() {
+  try {
+    const { getCatalogueRevision } = require('./store.controller');
+    return await getCatalogueRevision();
+  } catch {
+    return Date.now();
+  }
+}
+
+function noStore(res, revision) {
+  res.set({
+    'Cache-Control': 'no-store, no-cache, must-revalidate, private',
+    Pragma: 'no-cache',
+    Expires: '0',
+    'X-Catalogue-Revision': String(revision || 0),
+  });
+}
+
 // GET /api/products?q=&category=&min_price=&max_price=&sort=&page=&limit=
 exports.list = async (req, res, next) => {
   try {
     const { page, limit, offset } = parsePagination(req.query);
-    const conditions = ['p.is_active = TRUE'];
+    // IS TRUE excludes FALSE and NULL — deleted/deactivated never appear.
+    const conditions = ['p.is_active IS TRUE'];
     const params = [];
 
     if (req.query.q) {
@@ -76,13 +95,11 @@ exports.list = async (req, res, next) => {
       [...params, limit, offset]
     );
 
-    res.set({
-      'Cache-Control': 'no-store, no-cache, must-revalidate, private',
-      Pragma: 'no-cache',
-      Expires: '0',
-    });
+    const revision = await catalogueRevision();
+    noStore(res, revision);
     res.json({
       products: rows,
+      revision,
       pagination: {
         page,
         limit,
@@ -101,18 +118,15 @@ exports.getOne = async (req, res, next) => {
     const { idOrSlug } = req.params;
     const byId = /^\d+$/.test(idOrSlug);
     const { rows } = await db.query(
-      `${PRODUCT_SELECT} WHERE p.is_active = TRUE AND ${
+      `${PRODUCT_SELECT} WHERE p.is_active IS TRUE AND ${
         byId ? 'p.id = $1' : 'p.slug = $1'
       }`,
       [byId ? Number(idOrSlug) : idOrSlug]
     );
     if (rows.length === 0) throw new ApiError(404, 'Product not found');
-    res.set({
-      'Cache-Control': 'no-store, no-cache, must-revalidate, private',
-      Pragma: 'no-cache',
-      Expires: '0',
-    });
-    res.json({ product: rows[0] });
+    const revision = await catalogueRevision();
+    noStore(res, revision);
+    res.json({ product: rows[0], revision });
   } catch (err) {
     next(err);
   }

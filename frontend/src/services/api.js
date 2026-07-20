@@ -84,17 +84,22 @@ export const mapProduct = (product) => {
   }
 }
 
-export const mapProducts = (products) => asArray(products).map(mapProduct)
+export const mapProducts = (products) =>
+  asArray(products)
+    // Public catalogue safety net — never render deactivated rows.
+    .filter((product) => product && product.is_active !== false && product.is_active !== 'false' && product.is_active !== 0)
+    .map(mapProduct)
 
 /** Notify storefront pages to refetch products after admin catalogue changes. */
-export const bustProductCache = () => {
+export const bustProductCache = (revision) => {
+  const next = String(revision || Date.now())
   try {
-    localStorage.setItem('vub_products_rev', String(Date.now()))
+    localStorage.setItem('vub_products_rev', next)
   } catch {
     /* ignore */
   }
   if (typeof window !== 'undefined') {
-    window.dispatchEvent(new Event('vub:products-changed'))
+    window.dispatchEvent(new CustomEvent('vub:products-changed', { detail: { revision: next } }))
   }
 }
 
@@ -103,6 +108,24 @@ export const getProductCacheRev = () => {
     return localStorage.getItem('vub_products_rev') || '0'
   } catch {
     return '0'
+  }
+}
+
+/** Sync catalogue revision from the API (works across devices/browsers). */
+export const syncCatalogueRevision = async () => {
+  try {
+    const { data } = await api.get('/store/status', {
+      headers: { 'Cache-Control': 'no-cache', Pragma: 'no-cache' },
+      params: { _ts: Date.now() },
+    })
+    const revision = data?.catalogue_revision
+    if (revision != null && String(revision) !== getProductCacheRev()) {
+      bustProductCache(revision)
+      return String(revision)
+    }
+    return getProductCacheRev()
+  } catch {
+    return getProductCacheRev()
   }
 }
 

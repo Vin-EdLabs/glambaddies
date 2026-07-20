@@ -138,8 +138,8 @@ export function AdminProducts() {
     try {
       const { data: result } = await api.delete(`/vince-77-00/products/${id}`)
       setData({ ...data, products: data.products.filter((product) => product.id !== id), pagination: { ...data.pagination, total: Math.max(0, (data.pagination.total || 1) - 1) } })
-      bustProductCache()
-      toast.success(result.deleted ? 'Product deleted' : 'Product deactivated')
+      bustProductCache(result.revision)
+      toast.success(result.deleted ? 'Product deleted' : 'Product removed from store')
     } catch (deleteError) {
       toast.error(errorMessage(deleteError, 'Could not delete product'))
     }

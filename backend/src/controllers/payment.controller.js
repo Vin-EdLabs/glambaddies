@@ -90,17 +90,9 @@ function getFrontendOrigin() {
   ).replace(/\/$/, '');
 }
 
-function isUsdUnsupportedError(err) {
-  const message = String(paystackErrorMessage(err, '')).toLowerCase();
-  return (
-    message.includes('currency not supported') ||
-    message.includes('currency is not supported') ||
-    message.includes('unsupported currency')
-  );
-}
-
-// POST /api/payment/initialize { order_id }
-// Prefer USD. If the merchant cannot charge USD, fall back to GHS using the admin rate.
+// POST /api/payment/initialize { order_id, channels? }
+// Store catalogue is USD. Merchant charges GHS via admin USD→GHS rate.
+// Apple Pay and Paystack buttons share this exact flow; only `channels` differs.
 exports.initialize = async (req, res, next) => {
   try {
     const {
@@ -184,22 +176,21 @@ exports.initialize = async (req, res, next) => {
       throw new ApiError(400, 'Order total is too low for payment');
     }
 
+    const rate = await getUsdToGhsRate();
+    // Same conversion for every channel (card / mobile money / Apple Pay).
+    // e.g. $1.00 (100 cents) × 15.5 → 1550 pesewas (GHS 15.50)
+    const amountGhsPesewas = Math.max(100, Math.round(amountUsdCents * rate));
+    const channels = resolvePaystackChannels(req.body?.channels);
     const reference = `VUB-${order.id}-${crypto.randomBytes(8).toString('hex')}`;
     const callback_url = `${getFrontendOrigin()}/order-confirmation`;
-    const rate = await getUsdToGhsRate();
-    const channels = resolvePaystackChannels(req.body?.channels);
     const client = paystackClient(paymentConfig.secret_key);
 
     let data;
-    let chargedCurrency = 'USD';
-    let chargedAmountMinor = amountUsdCents;
-    let usedGhsFallback = false;
-
     try {
       data = await initializePaystackCharge(client, {
         email,
-        amount: amountUsdCents,
-        currency: 'USD',
+        amount: amountGhsPesewas,
+        currency: 'GHS',
         reference,
         callback_url,
         channels,
@@ -208,66 +199,19 @@ exports.initialize = async (req, res, next) => {
           user_id: order.user_id || null,
           guest: !order.user_id,
           payment_mode: paymentConfig.payment_mode,
-          charged_currency: 'USD',
-          charged_amount_cents: amountUsdCents,
+          charged_currency: 'GHS',
+          charged_amount_cents: amountGhsPesewas,
           display_currency: 'USD',
           display_amount_cents: amountUsdCents,
+          usd_to_ghs_rate: rate,
           channels,
         },
       });
-    } catch (usdErr) {
-      if (!isUsdUnsupportedError(usdErr)) {
-        throw new ApiError(
-          502,
-          paystackErrorMessage(
-            usdErr,
-            'Could not start payment with Paystack.'
-          )
-        );
-      }
-
-      // Merchant cannot charge USD — convert with admin USD→GHS rate (pesewas).
-      const amountGhsPesewas = Math.max(
-        100,
-        Math.round(amountUsdCents * rate)
+    } catch (initErr) {
+      throw new ApiError(
+        502,
+        paystackErrorMessage(initErr, 'Could not start payment with Paystack.')
       );
-      console.warn(
-        `[payment] USD not supported by merchant; charging GHS using rate ${rate}`
-      );
-      try {
-        data = await initializePaystackCharge(client, {
-          email,
-          amount: amountGhsPesewas,
-          currency: 'GHS',
-          reference,
-          callback_url,
-          channels,
-          metadata: {
-            order_id: order.id,
-            user_id: order.user_id || null,
-            guest: !order.user_id,
-            payment_mode: paymentConfig.payment_mode,
-            charged_currency: 'GHS',
-            charged_amount_cents: amountGhsPesewas,
-            display_currency: 'USD',
-            display_amount_cents: amountUsdCents,
-            usd_to_ghs_rate: rate,
-            usd_fallback_reason: 'currency_not_supported_by_merchant',
-            channels,
-          },
-        });
-      } catch (ghsErr) {
-        throw new ApiError(
-          502,
-          paystackErrorMessage(
-            ghsErr,
-            'Could not start GHS payment with Paystack.'
-          )
-        );
-      }
-      chargedCurrency = 'GHS';
-      chargedAmountMinor = amountGhsPesewas;
-      usedGhsFallback = true;
     }
 
     await db.query(
@@ -275,22 +219,15 @@ exports.initialize = async (req, res, next) => {
        SET payment_reference = $1,
            shipping_address = COALESCE(shipping_address, '{}'::jsonb)
              || jsonb_build_object(
-                  'paystack_currency', $2::text,
-                  'paystack_amount_minor', $3::int,
-                  'usd_to_ghs_rate', $4::numeric,
+                  'paystack_currency', 'GHS',
+                  'paystack_amount_minor', $2::int,
+                  'usd_to_ghs_rate', $3::numeric,
                   'display_currency', 'USD',
-                  'display_amount_cents', $5::int
+                  'display_amount_cents', $4::int
                 ),
            updated_at = NOW()
-       WHERE id = $6`,
-      [
-        reference,
-        chargedCurrency,
-        chargedAmountMinor,
-        rate,
-        amountUsdCents,
-        order.id,
-      ]
+       WHERE id = $5`,
+      [reference, amountGhsPesewas, rate, amountUsdCents, order.id]
     );
 
     res.json({
@@ -301,10 +238,10 @@ exports.initialize = async (req, res, next) => {
       paystack_public_key: paymentConfig.public_key || null,
       display_currency: 'USD',
       display_amount: Number((amountUsdCents / 100).toFixed(2)),
-      charged_currency: chargedCurrency,
-      charged_amount: Number((chargedAmountMinor / 100).toFixed(2)),
+      charged_currency: 'GHS',
+      charged_amount: Number((amountGhsPesewas / 100).toFixed(2)),
       exchange_rate: rate,
-      used_ghs_fallback: usedGhsFallback,
+      channels,
     });
   } catch (err) {
     if (err instanceof ApiError) return next(err);

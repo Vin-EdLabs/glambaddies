@@ -464,22 +464,33 @@ async function insertImages(productId, files) {
   return urls;
 }
 
-// GET /api/vince-77-00/products (includes inactive products)
+// GET /api/vince-77-00/products (active by default; ?include_inactive=1 for drafts)
 exports.listProducts = async (req, res, next) => {
   try {
     const { page, limit, offset } = parsePagination(req.query, {
       defaultLimit: 20,
     });
-    const countResult = await db.query('SELECT COUNT(*)::int AS total FROM products');
+    const includeInactive =
+      req.query.include_inactive === '1' || req.query.include_inactive === 'true';
+    const where = includeInactive ? '' : 'WHERE p.is_active IS TRUE';
+    const countResult = await db.query(
+      `SELECT COUNT(*)::int AS total FROM products p ${where}`
+    );
     const { rows } = await db.query(
       `SELECT p.*, ROUND(p.price_cents / 100.0, 2) AS price, c.name AS category_name,
               COALESCE((SELECT json_agg(json_build_object('id', pi.id, 'url', pi.url))
                         FROM product_images pi WHERE pi.product_id = p.id), '[]'::json) AS images
        FROM products p LEFT JOIN categories c ON c.id = p.category_id
+       ${where}
        ORDER BY p.created_at DESC
        LIMIT $1 OFFSET $2`,
       [limit, offset]
     );
+    res.set({
+      'Cache-Control': 'no-store, no-cache, must-revalidate, private',
+      Pragma: 'no-cache',
+      Expires: '0',
+    });
     res.json({
       products: rows,
       pagination: { page, limit, total: countResult.rows[0].total },
@@ -511,6 +522,8 @@ exports.createProduct = async (req, res, next) => {
     );
     const product = rows[0];
     product.images = await insertImages(product.id, req.files || []);
+    const { bumpCatalogueRevision } = require('./store.controller');
+    await bumpCatalogueRevision();
     res.status(201).json({ product });
   } catch (err) {
     next(err);
@@ -561,6 +574,8 @@ exports.updateProduct = async (req, res, next) => {
       [id]
     );
     product.images = images.rows;
+    const { bumpCatalogueRevision } = require('./store.controller');
+    await bumpCatalogueRevision();
     res.json({ product });
   } catch (err) {
     next(err);
@@ -580,11 +595,16 @@ exports.deleteProduct = async (req, res, next) => {
     const exists = await db.query('SELECT id FROM products WHERE id = $1', [id]);
     if (exists.rows.length === 0) throw new ApiError(404, 'Product not found');
 
-    // Hide immediately from public catalogue.
+    // Hide immediately from public catalogue (IS TRUE filter).
     await db.query(
-      'UPDATE products SET is_active = FALSE, updated_at = NOW() WHERE id = $1',
+      `UPDATE products
+       SET is_active = FALSE, updated_at = NOW()
+       WHERE id = $1`,
       [id]
     );
+
+    const { bumpCatalogueRevision } = require('./store.controller');
+    const revision = await bumpCatalogueRevision();
 
     const ordered = await db.query(
       'SELECT 1 FROM order_items WHERE product_id = $1 LIMIT 1',
@@ -595,7 +615,8 @@ exports.deleteProduct = async (req, res, next) => {
       return res.json({
         deleted: false,
         deactivated: true,
-        message: 'Product deactivated (kept for order history)',
+        revision,
+        message: 'Product removed from store (kept for order history)',
       });
     }
 
@@ -612,6 +633,7 @@ exports.deleteProduct = async (req, res, next) => {
     res.json({
       deleted: true,
       deactivated: true,
+      revision,
       message: 'Product deleted',
     });
   } catch (err) {

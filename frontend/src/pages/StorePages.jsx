@@ -5,7 +5,7 @@ import toast from 'react-hot-toast'
 import { ArrowLeft, ArrowRight, Check, ChevronDown, Clock3, Filter, Heart, Minus, Package, Plus, RotateCcw, ShieldCheck, ShoppingBag, Truck, X } from 'lucide-react'
 import { EmptyState, ErrorState, LoadingGrid, ProductCard, CopyValue } from '../components'
 import { useAuth, useCart } from '../contexts'
-import api, { asArray, errorMessage, getProductCacheRev, mapProduct, mapProducts } from '../services/api'
+import api, { asArray, errorMessage, getProductCacheRev, mapProduct, mapProducts, syncCatalogueRevision } from '../services/api'
 import { formatCurrency } from '../utils'
 
 function useApi(load, dependencies) {
@@ -20,16 +20,27 @@ function useApi(load, dependencies) {
   return { ...state, retry: run }
 }
 
-/** Refetch storefront catalogue when admin deletes/updates products. */
+/** Refetch storefront catalogue when products change (local or server revision). */
 function useProductCacheRev() {
   const [rev, setRev] = useState(() => getProductCacheRev())
   useEffect(() => {
     const sync = () => setRev(getProductCacheRev())
+    const onFocus = () => {
+      syncCatalogueRevision().then(sync).catch(sync)
+    }
     window.addEventListener('vub:products-changed', sync)
     window.addEventListener('storage', sync)
+    window.addEventListener('focus', onFocus)
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible') onFocus()
+    })
+    onFocus()
+    const timer = window.setInterval(onFocus, 30000)
     return () => {
       window.removeEventListener('vub:products-changed', sync)
       window.removeEventListener('storage', sync)
+      window.removeEventListener('focus', onFocus)
+      window.clearInterval(timer)
     }
   }, [])
   return rev
@@ -38,7 +49,12 @@ function useProductCacheRev() {
 export function Home() {
   const productsRev = useProductCacheRev()
   const { data: products, loading, error, retry } = useApi(
-    () => api.get('/products', { params: { limit: 8, sort: 'newest' } }).then(({ data }) => mapProducts(data?.products)), [productsRev],
+    () => api.get('/products', { params: { limit: 8, sort: 'newest' } }).then(({ data }) => {
+      if (data?.revision != null) {
+        try { localStorage.setItem('vub_products_rev', String(data.revision)) } catch { /* ignore */ }
+      }
+      return mapProducts(data?.products)
+    }), [productsRev],
   )
   const list = asArray(products)
   const edits = [
@@ -114,11 +130,16 @@ export function Shop() {
     () => Promise.all([
       api.get('/products', { params: { category: category || undefined, q: query || undefined, sort, limit: 100 } }),
       api.get('/categories'),
-    ]).then(([productsResult, categoriesResult]) => ({
-      products: mapProducts(productsResult.data?.products),
-      pagination: productsResult.data?.pagination || { total: 0 },
-      categories: asArray(categoriesResult.data?.categories),
-    })),
+    ]).then(([productsResult, categoriesResult]) => {
+      if (productsResult.data?.revision != null) {
+        try { localStorage.setItem('vub_products_rev', String(productsResult.data.revision)) } catch { /* ignore */ }
+      }
+      return {
+        products: mapProducts(productsResult.data?.products),
+        pagination: productsResult.data?.pagination || { total: 0 },
+        categories: asArray(categoriesResult.data?.categories),
+      }
+    }),
     [requestKey],
   )
   const products = asArray(data?.products)

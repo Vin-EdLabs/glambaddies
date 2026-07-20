@@ -144,6 +144,10 @@ async function ensureSettings() {
     ALTER TABLE store_settings
       ADD COLUMN IF NOT EXISTS usd_to_ghs_rate NUMERIC(12,4) NOT NULL DEFAULT 15.5
   `);
+  await db.query(`
+    ALTER TABLE store_settings
+      ADD COLUMN IF NOT EXISTS catalogue_revision BIGINT NOT NULL DEFAULT 1
+  `);
 
   await db.query(`
     INSERT INTO store_settings (id, purchases_enabled)
@@ -257,15 +261,45 @@ async function getUsdToGhsRate() {
   return Number.isFinite(envRate) && envRate > 0 ? envRate : 15.5;
 }
 
+async function bumpCatalogueRevision() {
+  await ensureSettings();
+  const { rows } = await db.query(
+    `UPDATE store_settings
+     SET catalogue_revision = catalogue_revision + 1, updated_at = NOW()
+     WHERE id = 1
+     RETURNING catalogue_revision`
+  );
+  return Number(rows[0]?.catalogue_revision) || Date.now();
+}
+
+async function getCatalogueRevision() {
+  const row = await getSettingsRow();
+  const rev = Number(row?.catalogue_revision);
+  if (Number.isFinite(rev) && rev > 0) return rev;
+  // Fallback when column is brand new / empty DBs.
+  const { rows } = await db.query(
+    `SELECT COALESCE(MAX(EXTRACT(EPOCH FROM updated_at))::bigint, 0) AS stamp
+     FROM products`
+  );
+  return Number(rows[0]?.stamp) || 1;
+}
+
 // GET /api/store/status
 exports.getStatus = async (req, res, next) => {
   try {
     const purchases_enabled = await getPurchasesEnabled();
     const payment = await getPaymentConfig();
+    const catalogue_revision = await getCatalogueRevision();
+    res.set({
+      'Cache-Control': 'no-store, no-cache, must-revalidate, private',
+      Pragma: 'no-cache',
+      Expires: '0',
+    });
     res.json({
       purchases_enabled,
       payment_mode: payment.payment_mode,
       paystack_public_key: payment.public_key || null,
+      catalogue_revision,
       message: purchases_enabled
         ? 'Store is open for purchases'
         : 'Item unavailable. Please try again later.',
@@ -316,6 +350,8 @@ exports.subscribeNewsletter = async (req, res, next) => {
 exports.getPurchasesEnabled = getPurchasesEnabled;
 exports.getPaymentConfig = getPaymentConfig;
 exports.getUsdToGhsRate = getUsdToGhsRate;
+exports.bumpCatalogueRevision = bumpCatalogueRevision;
+exports.getCatalogueRevision = getCatalogueRevision;
 exports.ensureSettings = ensureSettings;
 exports.getSettingsRow = getSettingsRow;
 exports.publicSettingsPayload = publicSettingsPayload;
