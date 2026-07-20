@@ -171,15 +171,29 @@ export function ProductDetail() {
   return <div className="product-detail"><div className="product-gallery">{images.map((image, index) => <img src={image} alt={`${product.name} view ${index + 1}`} key={`${image}-${index}`} />)}</div><div className="product-summary"><span className="eyebrow">{product.brand || product.category}</span><h1>{product.name}</h1><div className="detail-price">{formatCurrency(product.price)}</div><p>{product.description}</p>{sizes.length > 0 && <><div className="size-head"><strong>Select size</strong><button>Size guide</button></div><div className="size-grid">{sizes.map((item) => <button className={size === item ? 'selected' : ''} onClick={() => setSize(item)} key={item}>{item}</button>)}</div></>}<button className="button full" disabled={!product.stock} onClick={add}>{product.stock ? 'Add to bag' : 'Sold out'} <ShoppingBag /></button><button className="wishlist"><Heart /> Add to wishlist</button><details open><summary>Details & composition <Plus /></summary><p>{product.description || 'Thoughtfully made from premium materials.'}</p></details><details><summary>Delivery & returns <Plus /></summary><p>International delivery times vary by destination. Returns are accepted within 14 days.</p></details></div></div>
 }
 
+/** Amount + currency from /payment/prepare (GHS pesewas for Ghana Paystack). */
+function paystackAmountFromSession(session) {
+  const currency = String(session?.currency || 'GHS').toUpperCase()
+  const amount = Math.round(Number(session.amount_ghs_pesewas ?? session.amount))
+  if (!Number.isFinite(amount) || amount < 100) {
+    throw new Error('Invalid payment amount')
+  }
+  return { amount, currency }
+}
+
 export function Checkout() {
   const { items, subtotal, clearCart } = useCart()
   const { customer } = useAuth()
   const navigate = useNavigate()
   const checkoutFormRef = useRef(null)
+  const applePayMountedRef = useRef(false)
+  /** Exclusive checkout path: only one of 'apple' | 'paystack' owns the order reference. */
+  const paymentMethodRef = useRef(null)
   const [submitting, setSubmitting] = useState(false)
   const [pendingOrder, setPendingOrder] = useState(null)
   const [checkoutToken, setCheckoutToken] = useState('')
   const [purchasesEnabled, setPurchasesEnabled] = useState(true)
+  const [applePayReady, setApplePayReady] = useState(false)
   const shipping = 0
 
   useEffect(() => {
@@ -192,8 +206,140 @@ export function Checkout() {
       })
   }, [])
 
+  // On Apple devices, mount Paystack Apple Pay (USD) once the form is valid.
+  useEffect(() => {
+    const form = checkoutFormRef.current
+    if (!form) return undefined
+    let timer
+    const tryMount = () => {
+      window.clearTimeout(timer)
+      timer = window.setTimeout(() => {
+        if (
+          !form.checkValidity() ||
+          applePayMountedRef.current ||
+          paymentMethodRef.current === 'paystack' ||
+          submitting
+        ) {
+          return
+        }
+        mountApplePay(form).catch(() => {})
+      }, 400)
+    }
+    form.addEventListener('focusout', tryMount)
+    form.addEventListener('change', tryMount)
+    return () => {
+      window.clearTimeout(timer)
+      form.removeEventListener('focusout', tryMount)
+      form.removeEventListener('change', tryMount)
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [items.length, purchasesEnabled, submitting])
+
   const payHeaders = (token) => (token ? { Authorization: `Bearer ${token}` } : undefined)
 
+  const clearApplePayUi = () => {
+    applePayMountedRef.current = false
+    setApplePayReady(false)
+    const appleHost = document.getElementById('paystack-apple-pay')
+    if (appleHost) appleHost.replaceChildren()
+  }
+
+  const ensureOrder = async (form) => {
+    let order = pendingOrder
+    let token = checkoutToken
+    if (!order || !token) {
+      const fields = Object.fromEntries(new FormData(form))
+      const result = await api.post('/orders/guest', {
+        shipping_address: fields,
+        items: items.map((item) => ({
+          product_id: Number(item.id),
+          quantity: item.quantity,
+        })),
+      })
+      order = result.data.order
+      token = result.data.checkout_token
+      setPendingOrder(order)
+      setCheckoutToken(token)
+    }
+    return { order, token }
+  }
+
+  const verifyPayment = async (reference, token) => {
+    const { data } = await api.get(
+      `/payment/verify/${encodeURIComponent(reference)}`,
+      { headers: payHeaders(token) },
+    )
+    if (!data.verified) throw new Error('Payment could not be verified')
+    clearCart()
+    setCheckoutToken('')
+    setPendingOrder(null)
+    paymentMethodRef.current = null
+    navigate(`/order-confirmation?order=${data.order_id}&reference=${encodeURIComponent(reference)}`)
+  }
+
+  /** Apple Pay only: /payment/prepare → paymentRequest with backend USD cents. */
+  const mountApplePay = async (form) => {
+    if (applePayMountedRef.current || paymentMethodRef.current === 'paystack' || submitting) return
+    const canApple = Boolean(
+      typeof window !== 'undefined' &&
+        window.ApplePaySession &&
+        typeof window.ApplePaySession.canMakePayments === 'function' &&
+        window.ApplePaySession.canMakePayments()
+    )
+    if (!canApple) return
+
+    const { order, token } = await ensureOrder(form)
+    // Do not call /payment/initialize here — Apple Pay uses prepare only.
+    const { data: session } = await api.post(
+      '/payment/prepare',
+      { order_id: order.id },
+      { headers: payHeaders(token) },
+    )
+
+    const amountPayload = paystackAmountFromSession(session)
+    const publicKey =
+      session.paystack_public_key ||
+      import.meta.env.VITE_PAYSTACK_PUBLIC_KEY
+    if (!publicKey) return
+
+    paymentMethodRef.current = 'apple'
+    await new Promise((resolve) => window.setTimeout(resolve, 0))
+    const popup = new PaystackPop()
+    await popup.paymentRequest({
+      key: publicKey,
+      email: session.email,
+      amount: amountPayload.amount,
+      currency: amountPayload.currency,
+      ref: session.reference,
+      reference: session.reference,
+      container: 'paystack-apple-pay',
+      type: 'buy',
+      styles: {
+        theme: 'dark',
+        applePay: {
+          width: '100%',
+          height: '52px',
+          borderRadius: '4px',
+          type: 'buy',
+          locale: 'en',
+        },
+      },
+      onElementsMount: (elements) => {
+        setApplePayReady(Boolean(elements))
+      },
+      onSuccess: (transaction) => {
+        const reference = transaction?.reference || session.reference
+        verifyPayment(reference, token).catch((verifyError) => {
+          toast.error(errorMessage(verifyError, 'Payment verification failed'))
+        })
+      },
+      onCancel: () => toast.error('Payment cancelled'),
+      onError: (error) => toast.error(errorMessage(error, 'Payment failed')),
+    })
+    applePayMountedRef.current = true
+  }
+
+  /** Paystack popup: backend GHS initialize → resumeTransaction(access_code). */
   const startCheckout = async (event) => {
     event.preventDefault()
     const form = checkoutFormRef.current
@@ -208,22 +354,11 @@ export function Checkout() {
       }
       setPurchasesEnabled(true)
 
-      let order = pendingOrder
-      let token = checkoutToken
-      if (!order || !token) {
-        const fields = Object.fromEntries(new FormData(form))
-        const result = await api.post('/orders/guest', {
-          shipping_address: fields,
-          items: items.map((item) => ({
-            product_id: Number(item.id),
-            quantity: item.quantity,
-          })),
-        })
-        order = result.data.order
-        token = result.data.checkout_token
-        setPendingOrder(order)
-        setCheckoutToken(token)
-      }
+      const { order, token } = await ensureOrder(form)
+
+      // Switch exclusive path: abandon any Apple Pay prepare session before initialize.
+      paymentMethodRef.current = 'paystack'
+      clearApplePayUi()
 
       const { data: payment } = await api.post(
         '/payment/initialize',
@@ -234,34 +369,33 @@ export function Checkout() {
         { headers: payHeaders(token) },
       )
 
-      const verify = async () => {
-        const { data } = await api.get(
-          `/payment/verify/${encodeURIComponent(payment.reference)}`,
-          { headers: payHeaders(token) },
-        )
-        if (!data.verified) throw new Error('Payment could not be verified')
-        clearCart()
-        setCheckoutToken('')
-        setPendingOrder(null)
-        navigate(`/order-confirmation?order=${data.order_id}&reference=${encodeURIComponent(payment.reference)}`)
-      }
-
-      if (payment.access_code) {
-        const popup = new PaystackPop()
-        popup.resumeTransaction(payment.access_code, {
-          onSuccess: () => verify().catch((verifyError) => toast.error(errorMessage(verifyError, 'Payment verification failed'))),
-          onCancel: () => toast.error('Payment cancelled'),
-          onError: (error) => toast.error(errorMessage(error, 'Payment failed')),
-        })
-      } else if (payment.authorization_url) {
-        window.location.assign(payment.authorization_url)
-      } else {
+      // Currency is locked on the Paystack transaction (GHS for Ghana merchants).
+      if (!payment.access_code) {
+        if (payment.authorization_url) {
+          window.location.assign(payment.authorization_url)
+          return
+        }
         throw new Error('Payment could not be started')
       }
+
+      const popup = new PaystackPop()
+      popup.resumeTransaction(payment.access_code, {
+        onSuccess: () => verifyPayment(payment.reference, token).catch((verifyError) => toast.error(errorMessage(verifyError, 'Payment verification failed'))),
+        onCancel: () => {
+          paymentMethodRef.current = null
+          toast.error('Payment cancelled')
+        },
+        onError: (error) => {
+          paymentMethodRef.current = null
+          toast.error(errorMessage(error, 'Payment failed'))
+        },
+      })
     } catch (error) {
+      paymentMethodRef.current = null
       if (!String(error?.error || error?.message || '').toLowerCase().includes('unavailable')) {
         setPendingOrder(null)
         setCheckoutToken('')
+        clearApplePayUi()
       }
       toast.error(errorMessage(error, 'Checkout failed'))
     } finally {
@@ -287,7 +421,7 @@ export function Checkout() {
         )}
         <fieldset>
           <legend>Contact</legend>
-          <label>Email address<input name="email" type="email" required defaultValue={customer?.email || ''} autoComplete="email" /></label>
+          <label>email address<input name="email" type="email" required defaultValue={customer?.email || ''} autoComplete="email" /></label>
         </fieldset>
         <fieldset>
           <legend>Delivery address</legend>
@@ -311,10 +445,19 @@ export function Checkout() {
             <b>{shipping ? formatCurrency(shipping) : 'Complimentary'}</b>
           </label>
         </fieldset>
-        <button type="submit" className="button full checkout-paystack-button" disabled={submitting || !purchasesEnabled}>
-          {!purchasesEnabled ? 'Unavailable — try again later' : submitting ? 'Preparing payment…' : 'Pay securely with Paystack'}
-          <ShieldCheck />
-        </button>
+
+        <div className="checkout-pay-actions">
+          <div id="paystack-apple-pay" className="paystack-apple-pay" />
+          {applePayReady && (
+            <div className="checkout-pay-divider" role="separator" aria-label="or">
+              <span>or</span>
+            </div>
+          )}
+          <button type="submit" className="button full checkout-paystack-button" disabled={submitting || !purchasesEnabled}>
+            {!purchasesEnabled ? 'Unavailable — try again later' : submitting ? 'Preparing payment…' : 'Pay securely with Paystack'}
+            <ShieldCheck />
+          </button>
+        </div>
       </form>
       <OrderSummary items={items} subtotal={subtotal} shipping={shipping} />
     </div>

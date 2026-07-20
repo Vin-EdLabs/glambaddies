@@ -6,6 +6,13 @@ const { ApiError } = require('../middleware/error');
 const PAYSTACK_BASE_URL =
   process.env.PAYSTACK_BASE_URL || 'https://api.paystack.co';
 
+/**
+ * Ghana Paystack merchants can only initialize charges in GHS (not USD).
+ * Catalogue/orders stay USD; we convert to GHS pesewas at the admin rate
+ * only when talking to Paystack. Settlement to the merchant bank is GHS.
+ */
+const PAYSTACK_CHARGE_CURRENCY = 'GHS';
+
 function paystackClient(secretKey) {
   if (!secretKey) {
     throw new ApiError(
@@ -20,35 +27,18 @@ function paystackClient(secretKey) {
   });
 }
 
-async function initializePaystackCharge(client, {
-  email,
-  amount,
-  currency,
-  reference,
-  callback_url,
-  metadata,
-  channels,
-}) {
-  const payload = {
-    email,
-    amount: Math.round(Number(amount)),
-    currency,
-    reference,
-    // Card first by default so the popup opens on the Card tab.
-    channels: Array.isArray(channels) && channels.length
-      ? channels
-      : ['card', 'mobile_money', 'bank_transfer'],
-    metadata,
-  };
-  if (callback_url) payload.callback_url = callback_url;
-
-  const response = await client.post('/transaction/initialize', payload);
-  const data = response.data?.data;
-  if (!response.data?.status || !data?.authorization_url) {
-    const message = response.data?.message || 'Failed to initialize payment';
-    throw new ApiError(502, message);
+function paystackErrorMessage(err, fallback = 'Payment provider request failed') {
+  if (err instanceof ApiError) return err.message;
+  if (axios.isAxiosError(err)) {
+    return err.response?.data?.message || err.message || fallback;
   }
-  return data;
+  return err?.message || fallback;
+}
+
+function usdCentsToGhsPesewas(usdCents, rate) {
+  const dollars = Number(usdCents) / 100;
+  const cedis = dollars * Number(rate);
+  return Math.round(cedis * 100);
 }
 
 const ALLOWED_PAYSTACK_CHANNELS = new Set([
@@ -71,15 +61,55 @@ function resolvePaystackChannels(raw) {
   const channels = list
     .map((item) => String(item || '').trim().toLowerCase())
     .filter((item) => ALLOWED_PAYSTACK_CHANNELS.has(item));
-  return channels.length ? [...new Set(channels)] : ['card', 'mobile_money', 'bank_transfer'];
+  return channels.length
+    ? [...new Set(channels)]
+    : ['card', 'mobile_money', 'bank_transfer'];
 }
 
-function paystackErrorMessage(err, fallback = 'Payment provider request failed') {
-  if (err instanceof ApiError) return err.message;
-  if (axios.isAxiosError(err)) {
-    return err.response?.data?.message || err.message || fallback;
+async function initializePaystackCharge(client, {
+  email,
+  amountPesewas,
+  reference,
+  callback_url,
+  metadata,
+  channels,
+}) {
+  const amount = Math.round(Number(amountPesewas));
+  const payload = {
+    email,
+    amount,
+    currency: PAYSTACK_CHARGE_CURRENCY,
+    reference,
+    channels: Array.isArray(channels) && channels.length
+      ? channels
+      : ['card', 'mobile_money', 'bank_transfer'],
+    metadata,
+  };
+  if (callback_url) payload.callback_url = callback_url;
+
+  console.log('[paystack:initialize:request]', {
+    email,
+    amount: payload.amount,
+    currency: payload.currency,
+    reference: payload.reference,
+    channels: payload.channels,
+  });
+
+  const response = await client.post('/transaction/initialize', payload);
+  const data = response.data?.data;
+  if (!response.data?.status || !data?.authorization_url || !data?.access_code) {
+    const message = response.data?.message || 'Failed to initialize payment';
+    throw new ApiError(502, message);
   }
-  return err?.message || fallback;
+
+  console.log('[paystack:initialize:response]', {
+    reference: data.reference || reference,
+    access_code: Boolean(data.access_code),
+    amount: data.amount,
+    currency: data.currency,
+  });
+
+  return data;
 }
 
 function getFrontendOrigin() {
@@ -139,7 +169,14 @@ async function loadPayableOrder(req, orderId) {
     throw new ApiError(400, 'Order total is too low for payment');
   }
 
-  return { order, address, email, amountUsdCents };
+  const { getUsdToGhsRate } = require('./store.controller');
+  const rate = await getUsdToGhsRate();
+  const amountGhsPesewas = usdCentsToGhsPesewas(amountUsdCents, rate);
+  if (amountGhsPesewas < 100) {
+    throw new ApiError(400, 'Converted GHS amount is too low for payment');
+  }
+
+  return { order, address, email, amountUsdCents, amountGhsPesewas, rate };
 }
 
 async function lockOrderPayment({
@@ -157,47 +194,54 @@ async function lockOrderPayment({
            || jsonb_build_object(
                 'paystack_currency', 'GHS',
                 'paystack_amount_minor', $2::int,
-                'usd_to_ghs_rate', $3::numeric,
                 'display_currency', 'USD',
-                'display_amount_cents', $4::int,
+                'display_amount_cents', $3::int,
+                'usd_to_ghs_rate', $4::numeric,
                 'email', $5::text
               ),
          updated_at = NOW()
      WHERE id = $6`,
-    [reference, amountGhsPesewas, rate, amountUsdCents, email, order.id]
+    [reference, amountGhsPesewas, amountUsdCents, rate, email, order.id]
   );
 }
 
+async function assertPaymentConfigured() {
+  const {
+    assertPurchasesEnabled,
+    getPaymentConfig,
+    keyLooksLike,
+  } = require('./store.controller');
+  await assertPurchasesEnabled();
+  const paymentConfig = await getPaymentConfig();
+  if (!paymentConfig.secret_key) {
+    throw new ApiError(
+      500,
+      'Payment provider is not configured. Add Paystack keys in Admin → Settings → Payments.'
+    );
+  }
+  const keyCheck = keyLooksLike(
+    paymentConfig.payment_mode,
+    paymentConfig.public_key,
+    paymentConfig.secret_key
+  );
+  if (!keyCheck.secretOk || (paymentConfig.public_key && !keyCheck.publicOk)) {
+    throw new ApiError(
+      500,
+      paymentConfig.payment_mode === 'live'
+        ? 'Store is set to LIVE but Paystack live keys are missing or invalid. Fix keys in Admin → Settings → Payments.'
+        : 'Store is set to TEST but Paystack test keys are missing or invalid. Fix keys in Admin → Settings → Payments.'
+    );
+  }
+  return paymentConfig;
+}
+
 // POST /api/payment/prepare { order_id }
-// Client-side Paystack paymentRequest() — same GHS amount math, no Paystack initialize call.
+// Apple Pay paymentRequest — GHS pesewas (Ghana merchant requirement).
 exports.prepare = async (req, res, next) => {
   try {
-    const {
-      assertPurchasesEnabled,
-      getPaymentConfig,
-      keyLooksLike,
-      getUsdToGhsRate,
-    } = require('./store.controller');
-    await assertPurchasesEnabled();
-    const paymentConfig = await getPaymentConfig();
-    if (!paymentConfig.public_key || !paymentConfig.secret_key) {
-      throw new ApiError(
-        500,
-        'Payment provider is not configured. Add Paystack keys in Admin → Settings → Payments.'
-      );
-    }
-    const keyCheck = keyLooksLike(
-      paymentConfig.payment_mode,
-      paymentConfig.public_key,
-      paymentConfig.secret_key
-    );
-    if (!keyCheck.secretOk || !keyCheck.publicOk) {
-      throw new ApiError(
-        500,
-        paymentConfig.payment_mode === 'live'
-          ? 'Store is set to LIVE but Paystack live keys are missing or invalid.'
-          : 'Store is set to TEST but Paystack test keys are missing or invalid.'
-      );
+    const paymentConfig = await assertPaymentConfigured();
+    if (!paymentConfig.public_key) {
+      throw new ApiError(500, 'Paystack public key is missing.');
     }
 
     const orderId = Number(req.body?.order_id);
@@ -205,9 +249,8 @@ exports.prepare = async (req, res, next) => {
       throw new ApiError(400, 'order_id is required');
     }
 
-    const { order, email, amountUsdCents } = await loadPayableOrder(req, orderId);
-    const rate = await getUsdToGhsRate();
-    const amountGhsPesewas = Math.max(100, Math.round(amountUsdCents * rate));
+    const { order, email, amountUsdCents, amountGhsPesewas, rate } =
+      await loadPayableOrder(req, orderId);
     const reference = `VUB-${order.id}-${crypto.randomBytes(8).toString('hex')}`;
 
     await lockOrderPayment({
@@ -223,6 +266,8 @@ exports.prepare = async (req, res, next) => {
       reference,
       email,
       amount: amountGhsPesewas,
+      amount_ghs_pesewas: amountGhsPesewas,
+      amount_usd_cents: amountUsdCents,
       currency: 'GHS',
       paystack_public_key: paymentConfig.public_key,
       payment_mode: paymentConfig.payment_mode,
@@ -231,7 +276,7 @@ exports.prepare = async (req, res, next) => {
       display_amount: Number((amountUsdCents / 100).toFixed(2)),
       charged_currency: 'GHS',
       charged_amount: Number((amountGhsPesewas / 100).toFixed(2)),
-      exchange_rate: rate,
+      usd_to_ghs_rate: rate,
     });
   } catch (err) {
     next(err);
@@ -239,56 +284,38 @@ exports.prepare = async (req, res, next) => {
 };
 
 // POST /api/payment/initialize { order_id, channels? }
-// Server-side Paystack initialize (redirect / resumeTransaction). Same GHS conversion.
+// Ghana merchants: charge GHS. Storefront display stays USD.
 exports.initialize = async (req, res, next) => {
   try {
-    const {
-      assertPurchasesEnabled,
-      getPaymentConfig,
-      keyLooksLike,
-      getUsdToGhsRate,
-    } = require('./store.controller');
-    await assertPurchasesEnabled();
-    const paymentConfig = await getPaymentConfig();
-    if (!paymentConfig.secret_key) {
-      throw new ApiError(
-        500,
-        'Payment provider is not configured. Add Paystack keys in Admin → Settings → Payments.'
-      );
-    }
-    const keyCheck = keyLooksLike(
-      paymentConfig.payment_mode,
-      paymentConfig.public_key,
-      paymentConfig.secret_key
-    );
-    if (!keyCheck.secretOk || (paymentConfig.public_key && !keyCheck.publicOk)) {
-      throw new ApiError(
-        500,
-        paymentConfig.payment_mode === 'live'
-          ? 'Store is set to LIVE but Paystack live keys are missing or invalid. Fix keys in Admin → Settings → Payments.'
-          : 'Store is set to TEST but Paystack test keys are missing or invalid. Fix keys in Admin → Settings → Payments.'
-      );
-    }
+    const paymentConfig = await assertPaymentConfigured();
 
     const orderId = Number(req.body?.order_id);
     if (!Number.isInteger(orderId) || orderId < 1) {
       throw new ApiError(400, 'order_id is required');
     }
 
-    const { order, email, amountUsdCents } = await loadPayableOrder(req, orderId);
-    const rate = await getUsdToGhsRate();
-    const amountGhsPesewas = Math.max(100, Math.round(amountUsdCents * rate));
+    const { order, email, amountUsdCents, amountGhsPesewas, rate } =
+      await loadPayableOrder(req, orderId);
     const channels = resolvePaystackChannels(req.body?.channels);
     const reference = `VUB-${order.id}-${crypto.randomBytes(8).toString('hex')}`;
     const callback_url = `${getFrontendOrigin()}/order-confirmation`;
     const client = paystackClient(paymentConfig.secret_key);
 
+    console.log('[payment:initialize]', {
+      order_id: order.id,
+      email,
+      amountUsdCents,
+      amountGhsPesewas,
+      rate,
+      currency: PAYSTACK_CHARGE_CURRENCY,
+      reference,
+    });
+
     let data;
     try {
       data = await initializePaystackCharge(client, {
         email,
-        amount: amountGhsPesewas,
-        currency: 'GHS',
+        amountPesewas: amountGhsPesewas,
         reference,
         callback_url,
         channels,
@@ -298,7 +325,7 @@ exports.initialize = async (req, res, next) => {
           guest: !order.user_id,
           payment_mode: paymentConfig.payment_mode,
           charged_currency: 'GHS',
-          charged_amount_cents: amountGhsPesewas,
+          charged_amount_pesewas: amountGhsPesewas,
           display_currency: 'USD',
           display_amount_cents: amountUsdCents,
           usd_to_ghs_rate: rate,
@@ -308,7 +335,7 @@ exports.initialize = async (req, res, next) => {
     } catch (initErr) {
       throw new ApiError(
         502,
-        paystackErrorMessage(initErr, 'Could not start payment with Paystack.')
+        paystackErrorMessage(initErr, 'Could not start payment with Paystack')
       );
     }
 
@@ -324,14 +351,19 @@ exports.initialize = async (req, res, next) => {
     res.json({
       authorization_url: data.authorization_url,
       access_code: data.access_code,
-      reference,
+      reference: data.reference || reference,
+      email,
       payment_mode: paymentConfig.payment_mode,
       paystack_public_key: paymentConfig.public_key || null,
+      amount: amountGhsPesewas,
+      amount_ghs_pesewas: amountGhsPesewas,
+      amount_usd_cents: amountUsdCents,
+      currency: 'GHS',
       display_currency: 'USD',
       display_amount: Number((amountUsdCents / 100).toFixed(2)),
       charged_currency: 'GHS',
       charged_amount: Number((amountGhsPesewas / 100).toFixed(2)),
-      exchange_rate: rate,
+      usd_to_ghs_rate: rate,
       channels,
     });
   } catch (err) {
@@ -383,7 +415,7 @@ exports.verify = async (req, res, next) => {
       });
     }
 
-    const { getPaymentConfig, getUsdToGhsRate } = require('./store.controller');
+    const { getPaymentConfig } = require('./store.controller');
     const paymentConfig = await getPaymentConfig();
     const response = await paystackClient(paymentConfig.secret_key).get(
       `/transaction/verify/${encodeURIComponent(reference)}`
@@ -406,14 +438,13 @@ exports.verify = async (req, res, next) => {
         ? JSON.parse(order.shipping_address)
         : order.shipping_address || {};
 
-    // Accept historical GHS charges that still use the stored minor amount,
-    // but all new payments are USD cents matching the order total.
     const expectedCurrency = String(
-      address.paystack_currency || 'USD'
+      address.paystack_currency || 'GHS'
     ).toUpperCase();
-    const expectedAmount = Number(
-      address.paystack_amount_minor || order.total_cents
-    );
+    const expectedAmount = Number(address.paystack_amount_minor);
+    if (!expectedAmount) {
+      throw new ApiError(400, 'Order is missing locked Paystack amount');
+    }
 
     if (String(tx.currency).toUpperCase() !== expectedCurrency) {
       throw new ApiError(
@@ -425,7 +456,6 @@ exports.verify = async (req, res, next) => {
       throw new ApiError(400, 'Payment amount does not match order total');
     }
 
-    const rate = Number(address.usd_to_ghs_rate) || (await getUsdToGhsRate());
     const client = await db.getClient();
     try {
       await client.query('BEGIN');
@@ -451,7 +481,7 @@ exports.verify = async (req, res, next) => {
             paid_at: tx.paid_at,
             display_currency: 'USD',
             display_amount_cents: order.total_cents,
-            usd_to_ghs_rate: rate,
+            usd_to_ghs_rate: address.usd_to_ghs_rate || null,
           }),
         ]
       );
@@ -486,6 +516,7 @@ exports.verify = async (req, res, next) => {
       order_id: order.id,
       order_status: 'paid',
       charged_currency: expectedCurrency,
+      display_currency: 'USD',
     });
   } catch (err) {
     if (axios.isAxiosError(err)) {
