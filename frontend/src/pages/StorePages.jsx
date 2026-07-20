@@ -180,8 +180,8 @@ export function Checkout() {
   const [pendingOrder, setPendingOrder] = useState(null)
   const [checkoutToken, setCheckoutToken] = useState('')
   const [purchasesEnabled, setPurchasesEnabled] = useState(true)
-  const [applePayAvailable, setApplePayAvailable] = useState(false)
   const shipping = 0
+
   useEffect(() => {
     api.get('/store/status')
       .then(({ data }) => {
@@ -191,22 +191,11 @@ export function Checkout() {
         setPurchasesEnabled(true)
       })
   }, [])
-  useEffect(() => {
-    try {
-      const available = Boolean(
-        typeof window !== 'undefined' &&
-          window.ApplePaySession &&
-          typeof window.ApplePaySession.canMakePayments === 'function' &&
-          window.ApplePaySession.canMakePayments()
-      )
-      setApplePayAvailable(available)
-    } catch {
-      setApplePayAvailable(false)
-    }
-  }, [])
+
   const payHeaders = (token) => (token ? { Authorization: `Bearer ${token}` } : undefined)
 
-  const startCheckout = async (channels) => {
+  const startCheckout = async (event) => {
+    event.preventDefault()
     const form = checkoutFormRef.current
     if (!form || !items.length || submitting) return
     if (!form.reportValidity()) return
@@ -218,6 +207,7 @@ export function Checkout() {
         throw new Error('Item unavailable. Please try again later.')
       }
       setPurchasesEnabled(true)
+
       let order = pendingOrder
       let token = checkoutToken
       if (!order || !token) {
@@ -234,11 +224,16 @@ export function Checkout() {
         setPendingOrder(order)
         setCheckoutToken(token)
       }
+
       const { data: payment } = await api.post(
         '/payment/initialize',
-        { order_id: order.id, channels },
+        {
+          order_id: order.id,
+          channels: ['card', 'mobile_money', 'bank_transfer'],
+        },
         { headers: payHeaders(token) },
       )
+
       const verify = async () => {
         const { data } = await api.get(
           `/payment/verify/${encodeURIComponent(payment.reference)}`,
@@ -250,6 +245,7 @@ export function Checkout() {
         setPendingOrder(null)
         navigate(`/order-confirmation?order=${data.order_id}&reference=${encodeURIComponent(payment.reference)}`)
       }
+
       if (payment.access_code) {
         const popup = new PaystackPop()
         popup.resumeTransaction(payment.access_code, {
@@ -257,8 +253,10 @@ export function Checkout() {
           onCancel: () => toast.error('Payment cancelled'),
           onError: (error) => toast.error(errorMessage(error, 'Payment failed')),
         })
-      } else {
+      } else if (payment.authorization_url) {
         window.location.assign(payment.authorization_url)
+      } else {
+        throw new Error('Payment could not be started')
       }
     } catch (error) {
       if (!String(error?.error || error?.message || '').toLowerCase().includes('unavailable')) {
@@ -271,15 +269,10 @@ export function Checkout() {
     }
   }
 
-  const submit = async (event) => {
-    event.preventDefault()
-    await startCheckout(['card', 'mobile_money', 'bank_transfer'])
-  }
-
   if (!items.length) return <EmptyState title="Your bag is empty" text="Add a piece before starting checkout." action="Return to shop" to="/shop" />
   return (
     <div className="checkout-page">
-      <form ref={checkoutFormRef} onSubmit={submit}>
+      <form ref={checkoutFormRef} onSubmit={startCheckout}>
         <Link to="/shop"><ArrowLeft /> Continue shopping</Link>
         <h1>Checkout</h1>
         {!customer && <p className="guest-note">Checking out as a guest — no account needed. Prefer an account? <Link to="/login?next=/checkout">Sign in</Link></p>}
@@ -318,39 +311,10 @@ export function Checkout() {
             <b>{shipping ? formatCurrency(shipping) : 'Complimentary'}</b>
           </label>
         </fieldset>
-
-        <div className="checkout-pay-actions">
-          {applePayAvailable && (
-            <>
-              <button
-                type="button"
-                className="apple-pay-button"
-                {...{
-                  'apple-pay-button-type': 'buy',
-                  'apple-pay-button-style': 'black',
-                }}
-                disabled={submitting || !purchasesEnabled}
-                aria-label="Buy with Apple Pay"
-                onClick={() => startCheckout(['apple_pay'])}
-              />
-              <div className="checkout-pay-divider" role="separator" aria-label="or">
-                <span>or</span>
-              </div>
-            </>
-          )}
-          <button
-            type="submit"
-            className="button full checkout-paystack-button"
-            disabled={submitting || !purchasesEnabled}
-          >
-            {!purchasesEnabled
-              ? 'Unavailable — try again later'
-              : submitting
-                ? 'Preparing payment…'
-                : 'Pay securely with Paystack'}
-            <ShieldCheck />
-          </button>
-        </div>
+        <button type="submit" className="button full checkout-paystack-button" disabled={submitting || !purchasesEnabled}>
+          {!purchasesEnabled ? 'Unavailable — try again later' : submitting ? 'Preparing payment…' : 'Pay securely with Paystack'}
+          <ShieldCheck />
+        </button>
       </form>
       <OrderSummary items={items} subtotal={subtotal} shipping={shipping} />
     </div>

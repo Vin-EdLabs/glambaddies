@@ -90,9 +90,156 @@ function getFrontendOrigin() {
   ).replace(/\/$/, '');
 }
 
+async function loadPayableOrder(req, orderId) {
+  let order;
+  if (req.checkout) {
+    if (req.checkout.orderId !== orderId) {
+      throw new ApiError(403, 'Checkout token does not match this order');
+    }
+    const { rows } = await db.query(
+      `SELECT o.id, o.status, o.total_cents, o.currency, o.user_id, o.shipping_address
+       FROM orders o
+       WHERE o.id = $1`,
+      [orderId]
+    );
+    order = rows[0];
+  } else {
+    const { rows } = await db.query(
+      `SELECT o.id, o.status, o.total_cents, o.currency, o.user_id, o.shipping_address,
+              u.email AS user_email
+       FROM orders o
+       LEFT JOIN users u ON u.id = o.user_id
+       WHERE o.id = $1 AND o.user_id = $2`,
+      [orderId, req.user.id]
+    );
+    order = rows[0];
+  }
+
+  if (!order) throw new ApiError(404, 'Order not found');
+  if (order.status !== 'pending') {
+    throw new ApiError(400, `Order is already ${order.status}`);
+  }
+  if (order.total_cents <= 0) {
+    throw new ApiError(400, 'Order total must be greater than zero');
+  }
+
+  const address =
+    typeof order.shipping_address === 'string'
+      ? JSON.parse(order.shipping_address)
+      : order.shipping_address || {};
+  const email = String(
+    req.checkout?.email || address.email || order.user_email || ''
+  )
+    .trim()
+    .toLowerCase();
+  if (!email) throw new ApiError(400, 'Order is missing a contact email');
+
+  const amountUsdCents = Math.round(Number(order.total_cents));
+  if (amountUsdCents < 100) {
+    throw new ApiError(400, 'Order total is too low for payment');
+  }
+
+  return { order, address, email, amountUsdCents };
+}
+
+async function lockOrderPayment({
+  order,
+  email,
+  amountUsdCents,
+  amountGhsPesewas,
+  rate,
+  reference,
+}) {
+  await db.query(
+    `UPDATE orders
+     SET payment_reference = $1,
+         shipping_address = COALESCE(shipping_address, '{}'::jsonb)
+           || jsonb_build_object(
+                'paystack_currency', 'GHS',
+                'paystack_amount_minor', $2::int,
+                'usd_to_ghs_rate', $3::numeric,
+                'display_currency', 'USD',
+                'display_amount_cents', $4::int,
+                'email', $5::text
+              ),
+         updated_at = NOW()
+     WHERE id = $6`,
+    [reference, amountGhsPesewas, rate, amountUsdCents, email, order.id]
+  );
+}
+
+// POST /api/payment/prepare { order_id }
+// Client-side Paystack paymentRequest() — same GHS amount math, no Paystack initialize call.
+exports.prepare = async (req, res, next) => {
+  try {
+    const {
+      assertPurchasesEnabled,
+      getPaymentConfig,
+      keyLooksLike,
+      getUsdToGhsRate,
+    } = require('./store.controller');
+    await assertPurchasesEnabled();
+    const paymentConfig = await getPaymentConfig();
+    if (!paymentConfig.public_key || !paymentConfig.secret_key) {
+      throw new ApiError(
+        500,
+        'Payment provider is not configured. Add Paystack keys in Admin → Settings → Payments.'
+      );
+    }
+    const keyCheck = keyLooksLike(
+      paymentConfig.payment_mode,
+      paymentConfig.public_key,
+      paymentConfig.secret_key
+    );
+    if (!keyCheck.secretOk || !keyCheck.publicOk) {
+      throw new ApiError(
+        500,
+        paymentConfig.payment_mode === 'live'
+          ? 'Store is set to LIVE but Paystack live keys are missing or invalid.'
+          : 'Store is set to TEST but Paystack test keys are missing or invalid.'
+      );
+    }
+
+    const orderId = Number(req.body?.order_id);
+    if (!Number.isInteger(orderId) || orderId < 1) {
+      throw new ApiError(400, 'order_id is required');
+    }
+
+    const { order, email, amountUsdCents } = await loadPayableOrder(req, orderId);
+    const rate = await getUsdToGhsRate();
+    const amountGhsPesewas = Math.max(100, Math.round(amountUsdCents * rate));
+    const reference = `VUB-${order.id}-${crypto.randomBytes(8).toString('hex')}`;
+
+    await lockOrderPayment({
+      order,
+      email,
+      amountUsdCents,
+      amountGhsPesewas,
+      rate,
+      reference,
+    });
+
+    res.json({
+      reference,
+      email,
+      amount: amountGhsPesewas,
+      currency: 'GHS',
+      paystack_public_key: paymentConfig.public_key,
+      payment_mode: paymentConfig.payment_mode,
+      order_id: order.id,
+      display_currency: 'USD',
+      display_amount: Number((amountUsdCents / 100).toFixed(2)),
+      charged_currency: 'GHS',
+      charged_amount: Number((amountGhsPesewas / 100).toFixed(2)),
+      exchange_rate: rate,
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
 // POST /api/payment/initialize { order_id, channels? }
-// Store catalogue is USD. Merchant charges GHS via admin USD→GHS rate.
-// Apple Pay and Paystack buttons share this exact flow; only `channels` differs.
+// Server-side Paystack initialize (redirect / resumeTransaction). Same GHS conversion.
 exports.initialize = async (req, res, next) => {
   try {
     const {
@@ -128,57 +275,8 @@ exports.initialize = async (req, res, next) => {
       throw new ApiError(400, 'order_id is required');
     }
 
-    let order;
-    if (req.checkout) {
-      if (req.checkout.orderId !== orderId) {
-        throw new ApiError(403, 'Checkout token does not match this order');
-      }
-      const { rows } = await db.query(
-        `SELECT o.id, o.status, o.total_cents, o.currency, o.user_id, o.shipping_address
-         FROM orders o
-         WHERE o.id = $1`,
-        [orderId]
-      );
-      order = rows[0];
-    } else {
-      const { rows } = await db.query(
-        `SELECT o.id, o.status, o.total_cents, o.currency, o.user_id, o.shipping_address,
-                u.email AS user_email
-         FROM orders o
-         LEFT JOIN users u ON u.id = o.user_id
-         WHERE o.id = $1 AND o.user_id = $2`,
-        [orderId, req.user.id]
-      );
-      order = rows[0];
-    }
-
-    if (!order) throw new ApiError(404, 'Order not found');
-    if (order.status !== 'pending') {
-      throw new ApiError(400, `Order is already ${order.status}`);
-    }
-    if (order.total_cents <= 0) {
-      throw new ApiError(400, 'Order total must be greater than zero');
-    }
-
-    const address =
-      typeof order.shipping_address === 'string'
-        ? JSON.parse(order.shipping_address)
-        : order.shipping_address || {};
-    const email = String(
-      req.checkout?.email || address.email || order.user_email || ''
-    )
-      .trim()
-      .toLowerCase();
-    if (!email) throw new ApiError(400, 'Order is missing a contact email');
-
-    const amountUsdCents = Math.round(Number(order.total_cents));
-    if (amountUsdCents < 100) {
-      throw new ApiError(400, 'Order total is too low for payment');
-    }
-
+    const { order, email, amountUsdCents } = await loadPayableOrder(req, orderId);
     const rate = await getUsdToGhsRate();
-    // Same conversion for every channel (card / mobile money / Apple Pay).
-    // e.g. $1.00 (100 cents) × 15.5 → 1550 pesewas (GHS 15.50)
     const amountGhsPesewas = Math.max(100, Math.round(amountUsdCents * rate));
     const channels = resolvePaystackChannels(req.body?.channels);
     const reference = `VUB-${order.id}-${crypto.randomBytes(8).toString('hex')}`;
@@ -214,21 +312,14 @@ exports.initialize = async (req, res, next) => {
       );
     }
 
-    await db.query(
-      `UPDATE orders
-       SET payment_reference = $1,
-           shipping_address = COALESCE(shipping_address, '{}'::jsonb)
-             || jsonb_build_object(
-                  'paystack_currency', 'GHS',
-                  'paystack_amount_minor', $2::int,
-                  'usd_to_ghs_rate', $3::numeric,
-                  'display_currency', 'USD',
-                  'display_amount_cents', $4::int
-                ),
-           updated_at = NOW()
-       WHERE id = $5`,
-      [reference, amountGhsPesewas, rate, amountUsdCents, order.id]
-    );
+    await lockOrderPayment({
+      order,
+      email,
+      amountUsdCents,
+      amountGhsPesewas,
+      rate,
+      reference,
+    });
 
     res.json({
       authorization_url: data.authorization_url,

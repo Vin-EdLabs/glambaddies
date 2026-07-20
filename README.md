@@ -83,3 +83,15 @@ npm test             # backend tests
 For production, use managed object storage instead of the local `uploads`
 directory, configure a strict production CORS origin, rotate JWT secrets, and
 serve both applications over HTTPS.
+
+
+
+
+
+
+
+cd /var/www/vublishop
+git pull origin main
+cd frontend && npm run build
+pm2 restart vublishop-backend
+systemctl reload nginx

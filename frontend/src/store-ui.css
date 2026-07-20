@@ -365,30 +365,18 @@
   padding-bottom: 0;
 }
 
-@supports (-webkit-appearance: -apple-pay-button) {
-  .apple-pay-button {
-    display: block;
-    width: 100%;
-    height: 52px;
-    border: 0;
-    border-radius: 4px;
-    padding: 0;
-    cursor: pointer;
-    -webkit-appearance: -apple-pay-button;
-    -apple-pay-button-type: buy;
-    -apple-pay-button-style: black;
-  }
-
-  .apple-pay-button:disabled {
-    opacity: 0.55;
-    cursor: not-allowed;
-  }
+.paystack-apple-pay {
+  width: 100%;
+  min-height: 0;
 }
 
-@supports not (-webkit-appearance: -apple-pay-button) {
-  .apple-pay-button {
-    display: none;
-  }
+.paystack-apple-pay:empty {
+  display: none;
+}
+
+.checkout-edit-details {
+  justify-self: center;
+  margin-top: 0.25rem;
 }
 .store-toggle-card h2 {
   margin: 0 0 0.4rem;

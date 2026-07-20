@@ -135,9 +135,18 @@ export function AdminProducts() {
   const products = useMemo(() => asArray(data?.products).filter((product) => `${product.name} ${product.category}`.toLowerCase().includes(query.toLowerCase())), [data, query])
   const remove = async (id) => {
     if (!window.confirm('Delete this product? Products in past orders will be deactivated.')) return
+    const targetId = String(id)
     try {
-      const { data: result } = await api.delete(`/vince-77-00/products/${id}`)
-      setData({ ...data, products: data.products.filter((product) => product.id !== id), pagination: { ...data.pagination, total: Math.max(0, (data.pagination.total || 1) - 1) } })
+      const { data: result } = await api.delete(`/vince-77-00/products/${targetId}`)
+      // Remove from local React state immediately (no page refresh needed).
+      setData({
+        ...data,
+        products: asArray(data?.products).filter((product) => String(product.id) !== targetId),
+        pagination: {
+          ...data.pagination,
+          total: Math.max(0, (data?.pagination?.total || 1) - 1),
+        },
+      })
       bustProductCache(result.revision)
       toast.success(result.deleted ? 'Product deleted' : 'Product removed from store')
     } catch (deleteError) {

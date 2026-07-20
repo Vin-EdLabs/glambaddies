@@ -37,7 +37,7 @@ async function catalogueRevision() {
 
 function noStore(res, revision) {
   res.set({
-    'Cache-Control': 'no-store, no-cache, must-revalidate, private',
+    'Cache-Control': 'no-store',
     Pragma: 'no-cache',
     Expires: '0',
     'X-Catalogue-Revision': String(revision || 0),
@@ -48,8 +48,8 @@ function noStore(res, revision) {
 exports.list = async (req, res, next) => {
   try {
     const { page, limit, offset } = parsePagination(req.query);
-    // IS TRUE excludes FALSE and NULL — deleted/deactivated never appear.
-    const conditions = ['p.is_active IS TRUE'];
+    // Public catalogue: never return deleted / inactive products.
+    const conditions = ['p.is_active = TRUE'];
     const params = [];
 
     if (req.query.q) {
@@ -118,7 +118,7 @@ exports.getOne = async (req, res, next) => {
     const { idOrSlug } = req.params;
     const byId = /^\d+$/.test(idOrSlug);
     const { rows } = await db.query(
-      `${PRODUCT_SELECT} WHERE p.is_active IS TRUE AND ${
+      `${PRODUCT_SELECT} WHERE p.is_active = TRUE AND ${
         byId ? 'p.id = $1' : 'p.slug = $1'
       }`,
       [byId ? Number(idOrSlug) : idOrSlug]

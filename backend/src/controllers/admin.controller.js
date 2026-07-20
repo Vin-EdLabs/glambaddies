@@ -472,7 +472,7 @@ exports.listProducts = async (req, res, next) => {
     });
     const includeInactive =
       req.query.include_inactive === '1' || req.query.include_inactive === 'true';
-    const where = includeInactive ? '' : 'WHERE p.is_active IS TRUE';
+    const where = includeInactive ? '' : 'WHERE p.is_active = TRUE';
     const countResult = await db.query(
       `SELECT COUNT(*)::int AS total FROM products p ${where}`
     );
@@ -487,7 +487,7 @@ exports.listProducts = async (req, res, next) => {
       [limit, offset]
     );
     res.set({
-      'Cache-Control': 'no-store, no-cache, must-revalidate, private',
+      'Cache-Control': 'no-store',
       Pragma: 'no-cache',
       Expires: '0',
     });
@@ -583,8 +583,7 @@ exports.updateProduct = async (req, res, next) => {
 };
 
 // DELETE /api/vince-77-00/products/:id
-// Always deactivate first so the storefront stops showing the product.
-// Then hard-delete when the product is not referenced by past orders.
+// Soft-delete (is_active = false) always, then hard-delete when not in order history.
 exports.deleteProduct = async (req, res, next) => {
   try {
     const id = Number(req.params.id);
@@ -595,7 +594,7 @@ exports.deleteProduct = async (req, res, next) => {
     const exists = await db.query('SELECT id FROM products WHERE id = $1', [id]);
     if (exists.rows.length === 0) throw new ApiError(404, 'Product not found');
 
-    // Hide immediately from public catalogue (IS TRUE filter).
+    // Always hide from GET /api/products (filters is_active = TRUE).
     await db.query(
       `UPDATE products
        SET is_active = FALSE, updated_at = NOW()
@@ -603,8 +602,13 @@ exports.deleteProduct = async (req, res, next) => {
       [id]
     );
 
-    const { bumpCatalogueRevision } = require('./store.controller');
-    const revision = await bumpCatalogueRevision();
+    let revision = Date.now();
+    try {
+      const { bumpCatalogueRevision } = require('./store.controller');
+      revision = await bumpCatalogueRevision();
+    } catch {
+      /* revision bump is best-effort */
+    }
 
     const ordered = await db.query(
       'SELECT 1 FROM order_items WHERE product_id = $1 LIMIT 1',
@@ -615,27 +619,39 @@ exports.deleteProduct = async (req, res, next) => {
       return res.json({
         deleted: false,
         deactivated: true,
+        id,
         revision,
         message: 'Product removed from store (kept for order history)',
       });
     }
 
-    const images = await db.query(
-      'SELECT url FROM product_images WHERE product_id = $1',
-      [id]
-    );
-    await db.query('DELETE FROM products WHERE id = $1', [id]);
-
-    for (const { url } of images.rows) {
-      const filename = path.basename(url);
-      await fs.unlink(path.join(UPLOAD_DIR, filename)).catch(() => {});
+    try {
+      const images = await db.query(
+        'SELECT url FROM product_images WHERE product_id = $1',
+        [id]
+      );
+      await db.query('DELETE FROM products WHERE id = $1', [id]);
+      for (const { url } of images.rows) {
+        const filename = path.basename(url);
+        await fs.unlink(path.join(UPLOAD_DIR, filename)).catch(() => {});
+      }
+      return res.json({
+        deleted: true,
+        deactivated: true,
+        id,
+        revision,
+        message: 'Product deleted',
+      });
+    } catch {
+      // Soft-delete already applied — storefront will not show this product.
+      return res.json({
+        deleted: false,
+        deactivated: true,
+        id,
+        revision,
+        message: 'Product deactivated (could not hard-delete)',
+      });
     }
-    res.json({
-      deleted: true,
-      deactivated: true,
-      revision,
-      message: 'Product deleted',
-    });
   } catch (err) {
     next(err);
   }
