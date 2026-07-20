@@ -48,9 +48,9 @@ export function Dashboard() {
   const [busy, setBusy] = useState(false)
   const { data, loading, error, retry, setData } = useAdminData(
     () => Promise.all([
-      api.get('/admin/dashboard'),
-      api.get('/admin/orders', { params: { limit: 5 } }),
-      api.get('/admin/settings'),
+      api.get('/vince-77-00/dashboard'),
+      api.get('/vince-77-00/orders', { params: { limit: 5 } }),
+      api.get('/vince-77-00/settings'),
     ]).then(([stats, orders, settings]) => ({
       stats: stats.data.stats,
       orders: asArray(orders.data?.orders),
@@ -62,7 +62,7 @@ export function Dashboard() {
     const previous = data
     setData({ ...data, purchases_enabled: next })
     try {
-      const { data: result } = await api.put('/admin/settings', { purchases_enabled: next })
+      const { data: result } = await api.put('/vince-77-00/settings', { purchases_enabled: next })
       toast.success(result.message || (next ? 'Purchases enabled' : 'Purchases paused'))
     } catch (toggleError) {
       setData(previous)
@@ -73,7 +73,7 @@ export function Dashboard() {
     if (!confirm?.id) return
     setBusy(true)
     try {
-      await api.post(`/admin/orders/${confirm.id}/delete`)
+      await api.post(`/vince-77-00/orders/${confirm.id}/delete`)
       toast.success('Order deleted')
       setConfirm(null)
       retry()
@@ -130,13 +130,13 @@ export function AdminProducts() {
   const [page, setPage] = useState(1)
   const [query, setQuery] = useState('')
   const { data, loading, error, retry, setData } = useAdminData(
-    () => api.get('/admin/products', { params: { page, limit: 20 } }).then(({ data }) => ({ ...data, products: mapProducts(data?.products), pagination: data?.pagination || { total: 0 } })), [page],
+    () => api.get('/vince-77-00/products', { params: { page, limit: 20 } }).then(({ data }) => ({ ...data, products: mapProducts(data?.products), pagination: data?.pagination || { total: 0 } })), [page],
   )
   const products = useMemo(() => asArray(data?.products).filter((product) => `${product.name} ${product.category}`.toLowerCase().includes(query.toLowerCase())), [data, query])
   const remove = async (id) => {
     if (!window.confirm('Delete this product? Products in past orders will be deactivated.')) return
     try {
-      const { data: result } = await api.delete(`/admin/products/${id}`)
+      const { data: result } = await api.delete(`/vince-77-00/products/${id}`)
       setData({ ...data, products: data.products.filter((product) => product.id !== id), pagination: { ...data.pagination, total: data.pagination.total - 1 } })
       toast.success(result.deactivated ? 'Product deactivated' : 'Product deleted')
     } catch (deleteError) {
@@ -158,14 +158,14 @@ export function ProductForm() {
   const [files, setFiles] = useState([])
   const [saving, setSaving] = useState(false)
   const { data, loading, error, retry, setData } = useAdminData(
-    () => Promise.all([api.get('/categories'), id ? api.get('/admin/products', { params: { limit: 100 } }) : Promise.resolve({ data: { products: [] } })]).then(([categories, products]) => ({ categories: asArray(categories.data?.categories), product: mapProducts(products.data?.products).find((item) => String(item.id) === id) || null })), [id],
+    () => Promise.all([api.get('/categories'), id ? api.get('/vince-77-00/products', { params: { limit: 100 } }) : Promise.resolve({ data: { products: [] } })]).then(([categories, products]) => ({ categories: asArray(categories.data?.categories), product: mapProducts(products.data?.products).find((item) => String(item.id) === id) || null })), [id],
   )
   const product = data?.product ? mapProduct(data.product) : null
   const productImages = Array.isArray(data?.product?.images) ? data.product.images : []
   const deleteImage = async (imageId) => {
     if (!imageId) return
     try {
-      await api.delete(`/admin/products/${id}/images/${imageId}`)
+      await api.delete(`/vince-77-00/products/${id}/images/${imageId}`)
       setData({ ...data, product: { ...data.product, images: data.product.images.filter((image) => image.id !== imageId) } })
       toast.success('Image deleted')
     } catch (imageError) {
@@ -180,7 +180,7 @@ export function ProductForm() {
     form.set('is_active', form.get('is_active') === 'true' ? 'true' : 'false')
     files.forEach((file) => form.append('images', file))
     try {
-      await api({ method: id ? 'put' : 'post', url: id ? `/admin/products/${id}` : '/admin/products', data: form })
+      await api({ method: id ? 'put' : 'post', url: id ? `/vince-77-00/products/${id}` : '/vince-77-00/products', data: form })
       toast.success(id ? 'Product updated' : 'Product created')
       navigate(`${ADMIN_PATH}/products`)
     } catch (saveError) {
@@ -203,7 +203,7 @@ export function AdminOrders() {
   const [confirm, setConfirm] = useState(null)
   const [busy, setBusy] = useState(false)
   const { data, loading, error, retry, setData } = useAdminData(
-    () => api.get('/admin/orders', { params: { status: status || undefined, page, limit: 20 } })
+    () => api.get('/vince-77-00/orders', { params: { status: status || undefined, page, limit: 20 } })
       .then(({ data: result }) => ({
         ...result,
         orders: asArray(result?.orders),
@@ -215,7 +215,7 @@ export function AdminOrders() {
     const previous = data
     setData({ ...data, orders: asArray(data?.orders).map((order) => order.id === id ? { ...order, status: nextStatus } : order) })
     try {
-      await api.put(`/admin/orders/${id}/status`, { status: nextStatus })
+      await api.put(`/vince-77-00/orders/${id}/status`, { status: nextStatus })
       toast.success('Order status updated')
     } catch (updateError) {
       setData(previous)
@@ -243,7 +243,7 @@ export function AdminOrders() {
     try {
       if (confirm.type === 'all') {
         setClearing(true)
-        const { data: result } = await api.post('/admin/orders/clear')
+        const { data: result } = await api.post('/vince-77-00/orders/clear')
         toast.success(result.message || 'All orders cleared')
         setPage(1)
         setConfirm(null)
@@ -260,7 +260,7 @@ export function AdminOrders() {
           },
         })
         try {
-          await api.post(`/admin/orders/${confirm.id}/delete`)
+          await api.post(`/vince-77-00/orders/${confirm.id}/delete`)
           toast.success('Order deleted')
           setConfirm(null)
           if (!nextOrders.length && page > 1) setPage(page - 1)
@@ -305,13 +305,13 @@ export function AdminOrderDetail() {
   const [confirmOpen, setConfirmOpen] = useState(false)
   const [deleting, setDeleting] = useState(false)
   const { data, loading, error, retry, setData } = useAdminData(
-    () => api.get(`/admin/orders/${id}`).then(({ data }) => data.order), [id],
+    () => api.get(`/vince-77-00/orders/${id}`).then(({ data }) => data.order), [id],
   )
   const updateStatus = async (nextStatus) => {
     const previous = data
     setData({ ...data, status: nextStatus })
     try {
-      await api.put(`/admin/orders/${id}/status`, { status: nextStatus })
+      await api.put(`/vince-77-00/orders/${id}/status`, { status: nextStatus })
       toast.success('Order status updated')
     } catch (updateError) {
       setData(previous)
@@ -321,7 +321,7 @@ export function AdminOrderDetail() {
   const deleteOrder = async () => {
     setDeleting(true)
     try {
-      await api.post(`/admin/orders/${id}/delete`)
+      await api.post(`/vince-77-00/orders/${id}/delete`)
       toast.success('Order deleted')
       navigate(`${ADMIN_PATH}/orders`)
     } catch (deleteError) {
@@ -380,7 +380,7 @@ export function AdminCategories() {
     const form = event.currentTarget
     const values = Object.fromEntries(new FormData(form))
     try {
-      const { data } = editing?.id ? await api.put(`/admin/categories/${editing.id}`, values) : await api.post('/admin/categories', values)
+      const { data } = editing?.id ? await api.put(`/vince-77-00/categories/${editing.id}`, values) : await api.post('/vince-77-00/categories', values)
       setData(editing?.id ? categories.map((item) => item.id === editing.id ? { ...item, ...data.category } : item) : [...categories, { ...data.category, product_count: 0 }])
       setEditing(null)
       toast.success(editing?.id ? 'Category updated' : 'Category created')
@@ -391,7 +391,7 @@ export function AdminCategories() {
   const remove = async (category) => {
     if (!window.confirm(`Delete ${category.name}? Products will become uncategorised.`)) return
     try {
-      await api.delete(`/admin/categories/${category.id}`)
+      await api.delete(`/vince-77-00/categories/${category.id}`)
       setData(categories.filter((item) => item.id !== category.id))
       toast.success('Category deleted')
     } catch (deleteError) {
@@ -403,13 +403,13 @@ export function AdminCategories() {
 
 export function AdminCustomers() {
   const [page, setPage] = useState(1)
-  const { data, loading, error, retry } = useAdminData(() => api.get('/admin/users', { params: { page, limit: 20 } }).then(({ data }) => data), [page])
+  const { data, loading, error, retry } = useAdminData(() => api.get('/vince-77-00/users', { params: { page, limit: 20 } }).then(({ data }) => data), [page])
   return <AdminPage title="Customers" intro={`${data?.pagination.total || 0} customer profiles`}>{loading ? <LoadingGrid /> : error ? <ErrorState retry={retry} /> : data.users.length ? <section className="admin-card table-card"><div className="data-table"><table><thead><tr><th>Customer</th><th>Orders</th><th>Joined</th></tr></thead><tbody>{data.users.map((customer) => <tr key={customer.id}><td><div className="customer-cell"><span>{customer.name.split(' ').map((item) => item[0]).join('')}</span><div><b>{customer.name}</b><small>{customer.email}</small></div></div></td><td>{customer.order_count}</td><td>{new Date(customer.created_at).toLocaleDateString()}</td></tr>)}</tbody></table></div><Pagination page={page} total={data.pagination.total} limit={20} setPage={setPage} /></section> : <EmptyState title="No customers yet" text="Registered customers will appear here." />}</AdminPage>
 }
 
 export function Analytics() {
   const { data, loading, error, retry } = useAdminData(
-    () => api.get('/admin/analytics', { params: { days: 14 } }).then(({ data: result }) => result),
+    () => api.get('/vince-77-00/analytics', { params: { days: 14 } }).then(({ data: result }) => result),
     [],
   )
   if (loading) return <AdminPage title="Analytics" intro="Live performance across your storefront"><LoadingGrid /></AdminPage>
@@ -603,7 +603,7 @@ export function AdminSettings() {
   const [showNew, setShowNew] = useState(false)
   const [liveConfirmed, setLiveConfirmed] = useState(false)
   const { data, loading, error, retry, setData } = useAdminData(
-    () => api.get('/admin/settings').then(({ data: settings }) => {
+    () => api.get('/vince-77-00/settings').then(({ data: settings }) => {
       setLiveConfirmed(settings.payment_mode === 'live')
       return {
         purchases_enabled: settings.purchases_enabled !== false,
@@ -647,7 +647,7 @@ export function AdminSettings() {
     if (!data || saving) return
     setSaving(true)
     try {
-      const { data: result } = await api.put('/admin/settings', {
+      const { data: result } = await api.put('/vince-77-00/settings', {
         payment_mode: data.payment_mode,
         paystack_test_public_key: data.test_public,
         paystack_test_secret_key: data.test_secret,
@@ -677,7 +677,7 @@ export function AdminSettings() {
     const previous = data
     setData({ ...data, purchases_enabled: next })
     try {
-      const { data: result } = await api.put('/admin/settings', { purchases_enabled: next })
+      const { data: result } = await api.put('/vince-77-00/settings', { purchases_enabled: next })
       toast.success(result.message || (next ? 'Purchases enabled' : 'Purchases paused'))
     } catch (toggleError) {
       setData(previous)
@@ -695,7 +695,7 @@ export function AdminSettings() {
     }
     setPasswordSaving(true)
     try {
-      const { data: result } = await api.put('/admin/password', {
+      const { data: result } = await api.put('/vince-77-00/password', {
         current_password: fields.current_password,
         new_password: fields.new_password,
       })

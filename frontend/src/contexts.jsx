@@ -79,7 +79,7 @@ export function AuthProvider({ children }) {
     return data.user
   }
   const loginAdmin = async (details = {}) => {
-    const { data } = await api.post('/admin/login', details)
+    const { data } = await api.post('/vince-77-00/login', details)
     localStorage.setItem('vub_admin_token', data.token)
     localStorage.setItem('vub_admin', JSON.stringify(data.admin))
     setAdmin(data.admin)

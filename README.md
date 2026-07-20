@@ -47,6 +47,9 @@ Vite; the API uses Express, PostgreSQL, and Paystack.
 The storefront runs at `http://localhost:5173` and the API at
 `http://localhost:4000`.
 
+Admin panel (hidden URL): `http://localhost:5173/vince-77-00/login`  
+Admin API base: `http://localhost:4000/api/vince-77-00`
+
 ## Environment
 
 Backend variables are documented in `backend/.env.example`. The frontend uses:

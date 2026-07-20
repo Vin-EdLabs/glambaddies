@@ -31,7 +31,7 @@ app.use('/api/cart', require('./src/routes/cart.routes'));
 app.use('/api/orders', require('./src/routes/orders.routes'));
 app.use('/api/payment', require('./src/routes/payment.routes'));
 app.use('/api/store', require('./src/routes/store.routes'));
-app.use('/api/admin', require('./src/routes/admin.routes'));
+app.use('/api/vince-77-00', require('./src/routes/admin.routes'));
 
 app.use(notFound);
 app.use(errorHandler);

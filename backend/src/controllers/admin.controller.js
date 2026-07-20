@@ -9,7 +9,7 @@ const { slugify, parsePagination, toCents } = require('../utils/helpers');
 
 const ORDER_STATUSES = ['pending', 'paid', 'shipped', 'delivered', 'cancelled'];
 
-// POST /api/admin/login
+// POST /api/vince-77-00/login
 exports.login = async (req, res, next) => {
   try {
     const { email, password } = req.body || {};
@@ -39,7 +39,7 @@ exports.login = async (req, res, next) => {
   }
 };
 
-// GET /api/admin/dashboard
+// GET /api/vince-77-00/dashboard
 exports.dashboard = async (req, res, next) => {
   try {
     const { getPurchasesEnabled } = require('./store.controller');
@@ -59,7 +59,7 @@ exports.dashboard = async (req, res, next) => {
   }
 };
 
-// GET /api/admin/analytics — chart series for admin analytics page
+// GET /api/vince-77-00/analytics — chart series for admin analytics page
 exports.analytics = async (req, res, next) => {
   try {
     const days = Math.min(Math.max(Number(req.query.days) || 14, 7), 90);
@@ -144,7 +144,7 @@ exports.analytics = async (req, res, next) => {
   }
 };
 
-// GET /api/admin/settings
+// GET /api/vince-77-00/settings
 exports.getSettings = async (req, res, next) => {
   try {
     const { getSettingsRow, publicSettingsPayload } = require('./store.controller');
@@ -155,7 +155,7 @@ exports.getSettings = async (req, res, next) => {
   }
 };
 
-// PUT /api/admin/settings { purchases_enabled?: boolean, payment_mode?, keys... }
+// PUT /api/vince-77-00/settings { purchases_enabled?: boolean, payment_mode?, keys... }
 exports.updateSettings = async (req, res, next) => {
   try {
     const {
@@ -369,7 +369,7 @@ async function insertImages(productId, files) {
   return urls;
 }
 
-// GET /api/admin/products (includes inactive products)
+// GET /api/vince-77-00/products (includes inactive products)
 exports.listProducts = async (req, res, next) => {
   try {
     const { page, limit, offset } = parsePagination(req.query, {
@@ -394,7 +394,7 @@ exports.listProducts = async (req, res, next) => {
   }
 };
 
-// POST /api/admin/products  (multipart/form-data, images[] optional)
+// POST /api/vince-77-00/products  (multipart/form-data, images[] optional)
 exports.createProduct = async (req, res, next) => {
   try {
     const fields = parseProductBody(req.body || {});
@@ -422,7 +422,7 @@ exports.createProduct = async (req, res, next) => {
   }
 };
 
-// PUT /api/admin/products/:id  (multipart/form-data, images[] appended)
+// PUT /api/vince-77-00/products/:id  (multipart/form-data, images[] appended)
 exports.updateProduct = async (req, res, next) => {
   try {
     const id = Number(req.params.id);
@@ -472,7 +472,7 @@ exports.updateProduct = async (req, res, next) => {
   }
 };
 
-// DELETE /api/admin/products/:id
+// DELETE /api/vince-77-00/products/:id
 // Products referenced by past orders are soft-deleted (deactivated) so
 // order history stays intact; otherwise the row and its images are removed.
 exports.deleteProduct = async (req, res, next) => {
@@ -510,7 +510,7 @@ exports.deleteProduct = async (req, res, next) => {
   }
 };
 
-// DELETE /api/admin/products/:id/images/:imageId
+// DELETE /api/vince-77-00/products/:id/images/:imageId
 exports.deleteProductImage = async (req, res, next) => {
   try {
     const { rows } = await db.query(
@@ -529,7 +529,7 @@ exports.deleteProductImage = async (req, res, next) => {
 
 /* ----------------------------- categories ----------------------------- */
 
-// POST /api/admin/categories
+// POST /api/vince-77-00/categories
 exports.createCategory = async (req, res, next) => {
   try {
     const { name, description } = req.body || {};
@@ -545,7 +545,7 @@ exports.createCategory = async (req, res, next) => {
   }
 };
 
-// PUT /api/admin/categories/:id
+// PUT /api/vince-77-00/categories/:id
 exports.updateCategory = async (req, res, next) => {
   try {
     const { name, description } = req.body || {};
@@ -562,7 +562,7 @@ exports.updateCategory = async (req, res, next) => {
   }
 };
 
-// DELETE /api/admin/categories/:id (products keep existing via ON DELETE SET NULL)
+// DELETE /api/vince-77-00/categories/:id (products keep existing via ON DELETE SET NULL)
 exports.deleteCategory = async (req, res, next) => {
   try {
     const result = await db.query('DELETE FROM categories WHERE id = $1', [
@@ -577,7 +577,7 @@ exports.deleteCategory = async (req, res, next) => {
 
 /* ------------------------------- orders ------------------------------- */
 
-// GET /api/admin/orders?status=
+// GET /api/vince-77-00/orders?status=
 exports.listOrders = async (req, res, next) => {
   try {
     const { page, limit, offset } = parsePagination(req.query, {
@@ -619,7 +619,7 @@ exports.listOrders = async (req, res, next) => {
   }
 };
 
-// GET /api/admin/orders/:id
+// GET /api/vince-77-00/orders/:id
 exports.getOrder = async (req, res, next) => {
   try {
     const id = Number(req.params.id);
@@ -676,7 +676,7 @@ exports.getOrder = async (req, res, next) => {
   }
 };
 
-// PUT /api/admin/orders/:id/status { status }
+// PUT /api/vince-77-00/orders/:id/status { status }
 exports.updateOrderStatus = async (req, res, next) => {
   try {
     const { status } = req.body || {};
@@ -695,7 +695,7 @@ exports.updateOrderStatus = async (req, res, next) => {
   }
 };
 
-// DELETE /api/admin/orders/:id  (also POST /api/admin/orders/:id/delete)
+// DELETE /api/vince-77-00/orders/:id  (also POST /api/vince-77-00/orders/:id/delete)
 exports.deleteOrder = async (req, res, next) => {
   try {
     const id = Number(req.params.id);
@@ -713,8 +713,8 @@ exports.deleteOrder = async (req, res, next) => {
   }
 };
 
-// DELETE /api/admin/orders — remove every order (items/payments cascade)
-// also POST /api/admin/orders/clear
+// DELETE /api/vince-77-00/orders — remove every order (items/payments cascade)
+// also POST /api/vince-77-00/orders/clear
 exports.clearOrders = async (req, res, next) => {
   try {
     const { rowCount } = await db.query('DELETE FROM orders');
@@ -729,7 +729,7 @@ exports.clearOrders = async (req, res, next) => {
   }
 };
 
-// PUT /api/admin/password { current_password, new_password }
+// PUT /api/vince-77-00/password { current_password, new_password }
 exports.changePassword = async (req, res, next) => {
   try {
     const { current_password, new_password } = req.body || {};
@@ -769,7 +769,7 @@ exports.changePassword = async (req, res, next) => {
 
 /* -------------------------------- users ------------------------------- */
 
-// GET /api/admin/users
+// GET /api/vince-77-00/users
 exports.listUsers = async (req, res, next) => {
   try {
     const { page, limit, offset } = parsePagination(req.query, {

@@ -10,7 +10,7 @@ const api = axios.create({
 
 api.interceptors.request.use((config) => {
   if (!config.headers?.Authorization) {
-    const isAdmin = config.url?.startsWith('/admin')
+    const isAdmin = config.url?.startsWith('/vince-77-00')
     const token = localStorage.getItem(isAdmin ? 'vub_admin_token' : 'vub_customer_token')
     if (token) config.headers.Authorization = `Bearer ${token}`
   }
@@ -23,7 +23,7 @@ api.interceptors.response.use(
     const status = error.response?.status
     const requestUrl = String(error.config?.url || '')
     const isAuthAttempt = /\/(login|register)$/.test(requestUrl)
-    const isAdmin = requestUrl.includes('/admin')
+    const isAdmin = requestUrl.includes('/vince-77-00')
     if (status === 401 && !isAuthAttempt) {
       const type = isAdmin ? 'admin' : 'customer'
       const tokenKey = `vub_${type}_token`

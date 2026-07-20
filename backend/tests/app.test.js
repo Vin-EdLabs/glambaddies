@@ -52,7 +52,7 @@ test('app routing and auth guards (no database required)', async (t) => {
   });
 
   await t.test('admin routes reject missing tokens', async () => {
-    const res = await request(server, 'GET', '/api/admin/dashboard');
+    const res = await request(server, 'GET', '/api/vince-77-00/dashboard');
     assert.equal(res.status, 401);
   });
 
@@ -62,7 +62,7 @@ test('app routing and auth guards (no database required)', async (t) => {
       { sub: 1, email: 'x@example.com', role: 'customer' },
       process.env.JWT_SECRET
     );
-    const res = await request(server, 'GET', '/api/admin/dashboard', {
+    const res = await request(server, 'GET', '/api/vince-77-00/dashboard', {
       Authorization: `Bearer ${customerToken}`,
     });
     assert.equal(res.status, 401);
@@ -75,7 +75,7 @@ test('app routing and auth guards (no database required)', async (t) => {
       { sub: 1, email: 'x@example.com', role: 'admin' },
       process.env.JWT_SECRET
     );
-    const res = await request(server, 'GET', '/api/admin/users', {
+    const res = await request(server, 'GET', '/api/vince-77-00/users', {
       Authorization: `Bearer ${forged}`,
     });
     assert.equal(res.status, 401);

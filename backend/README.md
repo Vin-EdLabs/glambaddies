@@ -51,7 +51,7 @@ All routes are prefixed with `/api`. Authenticated routes expect `Authorization:
 | Cart | `GET /cart`, `POST /cart/items`, `PUT /cart/items/:productId`, `DELETE /cart/items/:productId`, `DELETE /cart` |
 | Orders | `POST /orders`, `GET /orders`, `GET /orders/:id` |
 | Payment | `POST /payment/initialize`, `GET /payment/verify/:reference` |
-| Admin | `POST /admin/login`, `GET /admin/dashboard`, product/category CRUD, `GET /admin/orders`, `PUT /admin/orders/:id/status`, `GET /admin/users` |
+| Admin | `POST /vince-77-00/login`, `GET /vince-77-00/dashboard`, product/category CRUD, `GET /vince-77-00/orders`, `PUT /vince-77-00/orders/:id/status`, `GET /vince-77-00/users` |
 
 Sort options for products: `newest`, `oldest`, `price_asc`, `price_desc`, `name_asc`, `name_desc`.
 
