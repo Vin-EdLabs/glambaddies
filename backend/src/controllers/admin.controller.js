@@ -155,7 +155,7 @@ exports.getSettings = async (req, res, next) => {
   }
 };
 
-// PUT /api/vince-77-00/settings { purchases_enabled?: boolean, payment_mode?, keys... }
+// PUT /api/vince-77-00/settings { purchases_enabled?: boolean, payment_mode?, keys..., usd_to_ghs_rate? }
 exports.updateSettings = async (req, res, next) => {
   try {
     const {
@@ -182,6 +182,18 @@ exports.updateSettings = async (req, res, next) => {
       }
       values.push(body.payment_mode);
       updates.push(`payment_mode = $${values.length}`);
+    }
+
+    // Accept common aliases so the Store rate form always persists.
+    const rawRate =
+      body.usd_to_ghs_rate ?? body.exchange_rate ?? body.rate;
+    if (rawRate !== undefined && rawRate !== null && rawRate !== '') {
+      const rate = Number(rawRate);
+      if (!Number.isFinite(rate) || rate <= 0) {
+        throw new ApiError(400, 'usd_to_ghs_rate must be a positive number');
+      }
+      values.push(rate);
+      updates.push(`usd_to_ghs_rate = $${values.length}`);
     }
 
     const keyFields = [
@@ -294,14 +306,17 @@ exports.updateSettings = async (req, res, next) => {
     );
 
     const payload = publicSettingsPayload(rows[0]);
+    const rateWasUpdated = rawRate !== undefined && rawRate !== null && rawRate !== '';
 
     let message = 'Settings saved';
-    if (typeof body.purchases_enabled === 'boolean' && !touchedPayments) {
+    if (typeof body.purchases_enabled === 'boolean' && !touchedPayments && !rateWasUpdated) {
       message = payload.purchases_enabled
         ? 'Purchases are now enabled'
         : 'Purchases are now paused. Customers cannot check out.';
     } else if (verification) {
       message = verification.message;
+    } else if (rateWasUpdated && !touchedPayments) {
+      message = `USD → GHS rate updated to ${payload.usd_to_ghs_rate}`;
     }
 
     res.json({
@@ -311,6 +326,86 @@ exports.updateSettings = async (req, res, next) => {
       live_confirmed: payload.payment_mode === 'live' && Boolean(verification?.verified),
     });
   } catch (err) {
+    next(err);
+  }
+};
+
+// PUT /api/vince-77-00/settings/rate { usd_to_ghs_rate | rate | exchange_rate }
+exports.updateExchangeRate = async (req, res, next) => {
+  try {
+    const {
+      ensureSettings,
+      publicSettingsPayload,
+    } = require('./store.controller');
+    await ensureSettings();
+
+    const body = req.body || {};
+    const rawRate = body.usd_to_ghs_rate ?? body.exchange_rate ?? body.rate;
+    const rate = Number(rawRate);
+    if (!Number.isFinite(rate) || rate <= 0) {
+      throw new ApiError(400, 'Enter a valid USD → GHS rate greater than 0');
+    }
+
+    const { rows } = await db.query(
+      `UPDATE store_settings
+       SET usd_to_ghs_rate = $1, updated_at = NOW()
+       WHERE id = 1
+       RETURNING *`,
+      [rate]
+    );
+
+    if (rows.length === 0) {
+      // Row missing — ensure + retry once.
+      await ensureSettings();
+      const retry = await db.query(
+        `UPDATE store_settings
+         SET usd_to_ghs_rate = $1, updated_at = NOW()
+         WHERE id = 1
+         RETURNING *`,
+        [rate]
+      );
+      if (retry.rows.length === 0) {
+        throw new ApiError(500, 'Could not save exchange rate — store settings row missing');
+      }
+      const payload = publicSettingsPayload(retry.rows[0]);
+      return res.json({
+        ...payload,
+        message: `USD → GHS rate updated to ${payload.usd_to_ghs_rate}`,
+      });
+    }
+
+    const payload = publicSettingsPayload(rows[0]);
+    res.json({
+      ...payload,
+      message: `USD → GHS rate updated to ${payload.usd_to_ghs_rate}`,
+    });
+  } catch (err) {
+    // Column may be missing on older DBs — add it and retry once.
+    if (err && err.code === '42703') {
+      try {
+        await db.query(`
+          ALTER TABLE store_settings
+            ADD COLUMN IF NOT EXISTS usd_to_ghs_rate NUMERIC(12,4) NOT NULL DEFAULT 15.5
+        `);
+        const body = req.body || {};
+        const rate = Number(body.usd_to_ghs_rate ?? body.exchange_rate ?? body.rate);
+        const { rows } = await db.query(
+          `UPDATE store_settings
+           SET usd_to_ghs_rate = $1, updated_at = NOW()
+           WHERE id = 1
+           RETURNING *`,
+          [rate]
+        );
+        const { publicSettingsPayload } = require('./store.controller');
+        const payload = publicSettingsPayload(rows[0]);
+        return res.json({
+          ...payload,
+          message: `USD → GHS rate updated to ${payload.usd_to_ghs_rate}`,
+        });
+      } catch (retryErr) {
+        return next(retryErr);
+      }
+    }
     next(err);
   }
 };
@@ -473,38 +568,52 @@ exports.updateProduct = async (req, res, next) => {
 };
 
 // DELETE /api/vince-77-00/products/:id
-// Products referenced by past orders are soft-deleted (deactivated) so
-// order history stays intact; otherwise the row and its images are removed.
+// Always deactivate first so the storefront stops showing the product.
+// Then hard-delete when the product is not referenced by past orders.
 exports.deleteProduct = async (req, res, next) => {
   try {
     const id = Number(req.params.id);
+    if (!Number.isInteger(id) || id < 1) {
+      throw new ApiError(400, 'Invalid product id');
+    }
+
+    const exists = await db.query('SELECT id FROM products WHERE id = $1', [id]);
+    if (exists.rows.length === 0) throw new ApiError(404, 'Product not found');
+
+    // Hide immediately from public catalogue.
+    await db.query(
+      'UPDATE products SET is_active = FALSE, updated_at = NOW() WHERE id = $1',
+      [id]
+    );
+
     const ordered = await db.query(
       'SELECT 1 FROM order_items WHERE product_id = $1 LIMIT 1',
       [id]
     );
 
     if (ordered.rows.length > 0) {
-      const result = await db.query(
-        'UPDATE products SET is_active = FALSE, updated_at = NOW() WHERE id = $1',
-        [id]
-      );
-      if (result.rowCount === 0) throw new ApiError(404, 'Product not found');
-      return res.json({ deleted: false, deactivated: true });
+      return res.json({
+        deleted: false,
+        deactivated: true,
+        message: 'Product deactivated (kept for order history)',
+      });
     }
 
     const images = await db.query(
       'SELECT url FROM product_images WHERE product_id = $1',
       [id]
     );
-    const result = await db.query('DELETE FROM products WHERE id = $1', [id]);
-    if (result.rowCount === 0) throw new ApiError(404, 'Product not found');
+    await db.query('DELETE FROM products WHERE id = $1', [id]);
 
-    // Best-effort cleanup of local upload files.
     for (const { url } of images.rows) {
       const filename = path.basename(url);
       await fs.unlink(path.join(UPLOAD_DIR, filename)).catch(() => {});
     }
-    res.json({ deleted: true, deactivated: false });
+    res.json({
+      deleted: true,
+      deactivated: true,
+      message: 'Product deleted',
+    });
   } catch (err) {
     next(err);
   }

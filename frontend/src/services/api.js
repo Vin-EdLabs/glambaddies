@@ -14,6 +14,12 @@ api.interceptors.request.use((config) => {
     const token = localStorage.getItem(isAdmin ? 'vub_admin_token' : 'vub_customer_token')
     if (token) config.headers.Authorization = `Bearer ${token}`
   }
+  // Bust browser/proxy caches for catalogue reads.
+  if (String(config.method || 'get').toLowerCase() === 'get' && String(config.url || '').startsWith('/products')) {
+    config.headers['Cache-Control'] = 'no-cache'
+    config.headers.Pragma = 'no-cache'
+    config.params = { ...(config.params || {}), _ts: Date.now() }
+  }
   return config
 })
 
@@ -79,6 +85,26 @@ export const mapProduct = (product) => {
 }
 
 export const mapProducts = (products) => asArray(products).map(mapProduct)
+
+/** Notify storefront pages to refetch products after admin catalogue changes. */
+export const bustProductCache = () => {
+  try {
+    localStorage.setItem('vub_products_rev', String(Date.now()))
+  } catch {
+    /* ignore */
+  }
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new Event('vub:products-changed'))
+  }
+}
+
+export const getProductCacheRev = () => {
+  try {
+    return localStorage.getItem('vub_products_rev') || '0'
+  } catch {
+    return '0'
+  }
+}
 
 export const errorMessage = (error, fallback = 'Something went wrong') =>
   error?.error || error?.message || fallback

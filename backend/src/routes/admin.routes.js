@@ -12,6 +12,7 @@ router.get('/dashboard', controller.dashboard);
 router.get('/analytics', controller.analytics);
 router.get('/settings', controller.getSettings);
 router.put('/settings', controller.updateSettings);
+router.put('/settings/rate', controller.updateExchangeRate);
 
 router.get('/products', controller.listProducts);
 router.post('/products', upload.array('images', 5), controller.createProduct);

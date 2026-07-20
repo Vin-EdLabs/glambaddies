@@ -140,12 +140,27 @@ async function ensureSettings() {
     ALTER TABLE store_settings
       ADD COLUMN IF NOT EXISTS paystack_live_secret_key TEXT NOT NULL DEFAULT ''
   `);
+  await db.query(`
+    ALTER TABLE store_settings
+      ADD COLUMN IF NOT EXISTS usd_to_ghs_rate NUMERIC(12,4) NOT NULL DEFAULT 15.5
+  `);
 
   await db.query(`
     INSERT INTO store_settings (id, purchases_enabled)
     VALUES (1, TRUE)
     ON CONFLICT (id) DO NOTHING
   `);
+
+  // Bootstrap rate from env once if still at default and env is set.
+  const envRate = Number(process.env.USD_TO_GHS_RATE);
+  if (Number.isFinite(envRate) && envRate > 0) {
+    await db.query(
+      `UPDATE store_settings
+       SET usd_to_ghs_rate = $1
+       WHERE id = 1 AND usd_to_ghs_rate = 15.5`,
+      [envRate]
+    );
+  }
 
   // Bootstrap empty DB keys from .env once (local/prod first deploy).
   const envPublic = process.env.PAYSTACK_PUBLIC_KEY || '';
@@ -221,6 +236,7 @@ function maskKey(value) {
 }
 
 function publicSettingsPayload(row) {
+  const rate = Number(row.usd_to_ghs_rate);
   return {
     purchases_enabled: row.purchases_enabled !== false,
     payment_mode: row.payment_mode === 'live' ? 'live' : 'test',
@@ -228,8 +244,17 @@ function publicSettingsPayload(row) {
     paystack_test_secret_key: row.paystack_test_secret_key || '',
     paystack_live_public_key: row.paystack_live_public_key || '',
     paystack_live_secret_key: row.paystack_live_secret_key || '',
+    usd_to_ghs_rate: Number.isFinite(rate) && rate > 0 ? rate : 15.5,
     updated_at: row.updated_at,
   };
+}
+
+async function getUsdToGhsRate() {
+  const row = await getSettingsRow();
+  const rate = Number(row?.usd_to_ghs_rate);
+  if (Number.isFinite(rate) && rate > 0) return rate;
+  const envRate = Number(process.env.USD_TO_GHS_RATE);
+  return Number.isFinite(envRate) && envRate > 0 ? envRate : 15.5;
 }
 
 // GET /api/store/status
@@ -290,6 +315,7 @@ exports.subscribeNewsletter = async (req, res, next) => {
 
 exports.getPurchasesEnabled = getPurchasesEnabled;
 exports.getPaymentConfig = getPaymentConfig;
+exports.getUsdToGhsRate = getUsdToGhsRate;
 exports.ensureSettings = ensureSettings;
 exports.getSettingsRow = getSettingsRow;
 exports.publicSettingsPayload = publicSettingsPayload;

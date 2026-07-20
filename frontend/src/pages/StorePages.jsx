@@ -1,11 +1,11 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import PaystackPop from '@paystack/inline-js'
 import toast from 'react-hot-toast'
 import { ArrowLeft, ArrowRight, Check, ChevronDown, Clock3, Filter, Heart, Minus, Package, Plus, RotateCcw, ShieldCheck, ShoppingBag, Truck, X } from 'lucide-react'
 import { EmptyState, ErrorState, LoadingGrid, ProductCard, CopyValue } from '../components'
 import { useAuth, useCart } from '../contexts'
-import api, { asArray, errorMessage, mapProduct, mapProducts } from '../services/api'
+import api, { asArray, errorMessage, getProductCacheRev, mapProduct, mapProducts } from '../services/api'
 import { formatCurrency } from '../utils'
 
 function useApi(load, dependencies) {
@@ -20,9 +20,25 @@ function useApi(load, dependencies) {
   return { ...state, retry: run }
 }
 
+/** Refetch storefront catalogue when admin deletes/updates products. */
+function useProductCacheRev() {
+  const [rev, setRev] = useState(() => getProductCacheRev())
+  useEffect(() => {
+    const sync = () => setRev(getProductCacheRev())
+    window.addEventListener('vub:products-changed', sync)
+    window.addEventListener('storage', sync)
+    return () => {
+      window.removeEventListener('vub:products-changed', sync)
+      window.removeEventListener('storage', sync)
+    }
+  }, [])
+  return rev
+}
+
 export function Home() {
+  const productsRev = useProductCacheRev()
   const { data: products, loading, error, retry } = useApi(
-    () => api.get('/products', { params: { limit: 8, sort: 'newest' } }).then(({ data }) => mapProducts(data?.products)), [],
+    () => api.get('/products', { params: { limit: 8, sort: 'newest' } }).then(({ data }) => mapProducts(data?.products)), [productsRev],
   )
   const list = asArray(products)
   const edits = [
@@ -90,9 +106,10 @@ export function Shop() {
   const [params] = useSearchParams()
   const [sort, setSort] = useState('newest')
   const [mobileFilters, setMobileFilters] = useState(false)
+  const productsRev = useProductCacheRev()
   const category = params.get('category') || ''
   const query = params.get('q') || ''
-  const requestKey = `${category}|${query}|${sort}`
+  const requestKey = `${category}|${query}|${sort}|${productsRev}`
   const { data, loading, error, retry } = useApi(
     () => Promise.all([
       api.get('/products', { params: { category: category || undefined, q: query || undefined, sort, limit: 100 } }),
@@ -122,7 +139,8 @@ export function ProductDetail() {
   const { id } = useParams()
   const { addItem } = useCart()
   const [size, setSize] = useState('')
-  const { data: product, loading, error, retry } = useApi(() => api.get(`/products/${id}`).then(({ data }) => mapProduct(data?.product)), [id])
+  const productsRev = useProductCacheRev()
+  const { data: product, loading, error, retry } = useApi(() => api.get(`/products/${id}`).then(({ data }) => mapProduct(data?.product)), [id, productsRev])
   if (loading) return <div className="section"><LoadingGrid /></div>
   if (error?.status === 404) return <EmptyState title="Piece not found" text="This item may no longer be available." action="Continue shopping" to="/shop" />
   if (error) return <ErrorState retry={retry} />
@@ -136,10 +154,12 @@ export function Checkout() {
   const { items, subtotal, clearCart } = useCart()
   const { customer } = useAuth()
   const navigate = useNavigate()
+  const checkoutFormRef = useRef(null)
   const [submitting, setSubmitting] = useState(false)
   const [pendingOrder, setPendingOrder] = useState(null)
   const [checkoutToken, setCheckoutToken] = useState('')
   const [purchasesEnabled, setPurchasesEnabled] = useState(true)
+  const [applePayAvailable, setApplePayAvailable] = useState(false)
   const shipping = 0
   useEffect(() => {
     api.get('/store/status')
@@ -150,11 +170,25 @@ export function Checkout() {
         setPurchasesEnabled(true)
       })
   }, [])
+  useEffect(() => {
+    try {
+      const available = Boolean(
+        typeof window !== 'undefined' &&
+          window.ApplePaySession &&
+          typeof window.ApplePaySession.canMakePayments === 'function' &&
+          window.ApplePaySession.canMakePayments()
+      )
+      setApplePayAvailable(available)
+    } catch {
+      setApplePayAvailable(false)
+    }
+  }, [])
   const payHeaders = (token) => (token ? { Authorization: `Bearer ${token}` } : undefined)
-  const submit = async (event) => {
-    event.preventDefault()
-    const form = event.currentTarget
-    if (!items.length || submitting) return
+
+  const startCheckout = async (channels) => {
+    const form = checkoutFormRef.current
+    if (!form || !items.length || submitting) return
+    if (!form.reportValidity()) return
     setSubmitting(true)
     try {
       const { data: store } = await api.get('/store/status')
@@ -181,7 +215,7 @@ export function Checkout() {
       }
       const { data: payment } = await api.post(
         '/payment/initialize',
-        { order_id: order.id },
+        { order_id: order.id, channels },
         { headers: payHeaders(token) },
       )
       const verify = async () => {
@@ -206,7 +240,6 @@ export function Checkout() {
         window.location.assign(payment.authorization_url)
       }
     } catch (error) {
-      // Allow a clean retry if payment init failed after order creation.
       if (!String(error?.error || error?.message || '').toLowerCase().includes('unavailable')) {
         setPendingOrder(null)
         setCheckoutToken('')
@@ -216,8 +249,91 @@ export function Checkout() {
       setSubmitting(false)
     }
   }
+
+  const submit = async (event) => {
+    event.preventDefault()
+    await startCheckout(['card', 'mobile_money', 'bank_transfer'])
+  }
+
   if (!items.length) return <EmptyState title="Your bag is empty" text="Add a piece before starting checkout." action="Return to shop" to="/shop" />
-  return <div className="checkout-page"><form onSubmit={submit}><Link to="/shop"><ArrowLeft /> Continue shopping</Link><h1>Checkout</h1>{!customer && <p className="guest-note">Checking out as a guest — no account needed. Prefer an account? <Link to="/login?next=/checkout">Sign in</Link></p>}{!purchasesEnabled && <div className="store-paused-banner" role="alert"><Package /><div><strong>Items unavailable</strong><p>Purchases are paused right now. Please try again later.</p></div></div>}<fieldset><legend>Contact</legend><label>Email address<input name="email" type="email" required defaultValue={customer?.email || ''} autoComplete="email" /></label></fieldset><fieldset><legend>Delivery address</legend><div className="form-grid"><label>First name<input name="first_name" required autoComplete="given-name" /></label><label>Last name<input name="last_name" required autoComplete="family-name" /></label><label className="span-2">Street address<input name="street" required autoComplete="street-address" /></label><label>City<input name="city" required autoComplete="address-level2" /></label><label>State / Province<input name="state" autoComplete="address-level1" /></label><label className="span-2">Country<input name="country" required autoComplete="country-name" /></label><label>Phone number<input name="phone" type="tel" required autoComplete="tel" /></label><label>Postal / ZIP code<input name="postal_code" autoComplete="postal-code" /></label></div></fieldset><fieldset><legend>Delivery method</legend><label className="delivery-option"><input type="radio" checked readOnly /><Truck /><span><strong>Standard delivery</strong><small>1–3 working days</small></span><b>{shipping ? formatCurrency(shipping) : 'Complimentary'}</b></label></fieldset><button className="button full" disabled={submitting || !purchasesEnabled}>{!purchasesEnabled ? 'Unavailable — try again later' : submitting ? 'Preparing payment…' : 'Pay securely with Paystack'} <ShieldCheck /></button></form><OrderSummary items={items} subtotal={subtotal} shipping={shipping} /></div>
+  return (
+    <div className="checkout-page">
+      <form ref={checkoutFormRef} onSubmit={submit}>
+        <Link to="/shop"><ArrowLeft /> Continue shopping</Link>
+        <h1>Checkout</h1>
+        {!customer && <p className="guest-note">Checking out as a guest — no account needed. Prefer an account? <Link to="/login?next=/checkout">Sign in</Link></p>}
+        {!purchasesEnabled && (
+          <div className="store-paused-banner" role="alert">
+            <Package />
+            <div>
+              <strong>Items unavailable</strong>
+              <p>Purchases are paused right now. Please try again later.</p>
+            </div>
+          </div>
+        )}
+        <fieldset>
+          <legend>Contact</legend>
+          <label>Email address<input name="email" type="email" required defaultValue={customer?.email || ''} autoComplete="email" /></label>
+        </fieldset>
+        <fieldset>
+          <legend>Delivery address</legend>
+          <div className="form-grid">
+            <label>First name<input name="first_name" required autoComplete="given-name" /></label>
+            <label>Last name<input name="last_name" required autoComplete="family-name" /></label>
+            <label className="span-2">Street address<input name="street" required autoComplete="street-address" /></label>
+            <label>City<input name="city" required autoComplete="address-level2" /></label>
+            <label>State / Province<input name="state" autoComplete="address-level1" /></label>
+            <label className="span-2">Country<input name="country" required autoComplete="country-name" /></label>
+            <label>Phone number<input name="phone" type="tel" required autoComplete="tel" /></label>
+            <label>Postal / ZIP code<input name="postal_code" autoComplete="postal-code" /></label>
+          </div>
+        </fieldset>
+        <fieldset>
+          <legend>Delivery method</legend>
+          <label className="delivery-option">
+            <input type="radio" checked readOnly />
+            <Truck />
+            <span><strong>Standard delivery</strong><small>1–3 working days</small></span>
+            <b>{shipping ? formatCurrency(shipping) : 'Complimentary'}</b>
+          </label>
+        </fieldset>
+
+        <div className="checkout-pay-actions">
+          {applePayAvailable && (
+            <>
+              <button
+                type="button"
+                className="apple-pay-button"
+                {...{
+                  'apple-pay-button-type': 'buy',
+                  'apple-pay-button-style': 'black',
+                }}
+                disabled={submitting || !purchasesEnabled}
+                aria-label="Buy with Apple Pay"
+                onClick={() => startCheckout(['apple_pay'])}
+              />
+              <div className="checkout-pay-divider" role="separator" aria-label="or">
+                <span>or</span>
+              </div>
+            </>
+          )}
+          <button
+            type="submit"
+            className="button full checkout-paystack-button"
+            disabled={submitting || !purchasesEnabled}
+          >
+            {!purchasesEnabled
+              ? 'Unavailable — try again later'
+              : submitting
+                ? 'Preparing payment…'
+                : 'Pay securely with Paystack'}
+            <ShieldCheck />
+          </button>
+        </div>
+      </form>
+      <OrderSummary items={items} subtotal={subtotal} shipping={shipping} />
+    </div>
+  )
 }
 
 function OrderSummary({ items, subtotal, shipping }) {

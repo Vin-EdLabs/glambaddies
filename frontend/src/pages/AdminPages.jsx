@@ -4,7 +4,7 @@ import toast from 'react-hot-toast'
 import { ArrowRight, Box, Check, DollarSign, Edit3, Eye, EyeOff, Mail, Plus, Search, ShoppingCart, Trash2, Upload, Users } from 'lucide-react'
 import { EmptyState, ErrorState, LoadingGrid, CopyValue, ConfirmDialog } from '../components'
 import { useAuth } from '../contexts'
-import api, { asArray, errorMessage, mapProduct, mapProducts, resolveImageUrl } from '../services/api'
+import api, { asArray, bustProductCache, errorMessage, mapProduct, mapProducts, resolveImageUrl } from '../services/api'
 import { formatCurrency } from '../utils'
 import { ADMIN_PATH } from '../adminPath'
 
@@ -137,8 +137,9 @@ export function AdminProducts() {
     if (!window.confirm('Delete this product? Products in past orders will be deactivated.')) return
     try {
       const { data: result } = await api.delete(`/vince-77-00/products/${id}`)
-      setData({ ...data, products: data.products.filter((product) => product.id !== id), pagination: { ...data.pagination, total: data.pagination.total - 1 } })
-      toast.success(result.deactivated ? 'Product deactivated' : 'Product deleted')
+      setData({ ...data, products: data.products.filter((product) => product.id !== id), pagination: { ...data.pagination, total: Math.max(0, (data.pagination.total || 1) - 1) } })
+      bustProductCache()
+      toast.success(result.deleted ? 'Product deleted' : 'Product deactivated')
     } catch (deleteError) {
       toast.error(errorMessage(deleteError, 'Could not delete product'))
     }
@@ -181,6 +182,7 @@ export function ProductForm() {
     files.forEach((file) => form.append('images', file))
     try {
       await api({ method: id ? 'put' : 'post', url: id ? `/vince-77-00/products/${id}` : '/vince-77-00/products', data: form })
+      bustProductCache()
       toast.success(id ? 'Product updated' : 'Product created')
       navigate(`${ADMIN_PATH}/products`)
     } catch (saveError) {
@@ -688,6 +690,7 @@ export function AdminSettings() {
   const { admin } = useAuth()
   const [tab, setTab] = useState('account')
   const [saving, setSaving] = useState(false)
+  const [rateSaving, setRateSaving] = useState(false)
   const [passwordSaving, setPasswordSaving] = useState(false)
   const [showPublic, setShowPublic] = useState(false)
   const [showSecret, setShowSecret] = useState(false)
@@ -704,6 +707,7 @@ export function AdminSettings() {
         test_secret: settings.paystack_test_secret_key || '',
         live_public: settings.paystack_live_public_key || '',
         live_secret: settings.paystack_live_secret_key || '',
+        usd_to_ghs_rate: Number(settings.usd_to_ghs_rate) > 0 ? Number(settings.usd_to_ghs_rate) : 15.5,
       }
     }),
     [],
@@ -747,14 +751,19 @@ export function AdminSettings() {
         paystack_live_secret_key: data.live_secret,
       })
       setData({
+        ...data,
         purchases_enabled: result.purchases_enabled !== false,
         payment_mode: result.payment_mode === 'live' ? 'live' : 'test',
         test_public: result.paystack_test_public_key || '',
         test_secret: result.paystack_test_secret_key || '',
         live_public: result.paystack_live_public_key || '',
         live_secret: result.paystack_live_secret_key || '',
+        usd_to_ghs_rate: Number(result.usd_to_ghs_rate) > 0 ? Number(result.usd_to_ghs_rate) : data.usd_to_ghs_rate,
       })
-      setLiveConfirmed(Boolean(result.live_confirmed))
+      setLiveConfirmed(
+        Boolean(result.live_confirmed) ||
+          (result.payment_mode === 'live' && liveConfirmed && data.payment_mode === 'live')
+      )
       toast.success(result.message || 'Payment settings saved')
     } catch (saveError) {
       setLiveConfirmed(false)
@@ -774,6 +783,36 @@ export function AdminSettings() {
     } catch (toggleError) {
       setData(previous)
       toast.error(errorMessage(toggleError, 'Could not update store availability'))
+    }
+  }
+
+  const saveRate = async (event) => {
+    event.preventDefault()
+    if (!data || rateSaving) return
+    const rate = Number(data.usd_to_ghs_rate)
+    if (!Number.isFinite(rate) || rate <= 0) {
+      toast.error('Enter a valid USD → GHS rate greater than 0')
+      return
+    }
+    setRateSaving(true)
+    try {
+      // Prefer dedicated route; fall back to general settings if API is older.
+      let result
+      try {
+        ({ data: result } = await api.put('/vince-77-00/settings/rate', { usd_to_ghs_rate: rate }))
+      } catch (routeError) {
+        if (routeError?.status !== 404) throw routeError
+        ({ data: result } = await api.put('/vince-77-00/settings', { usd_to_ghs_rate: rate }))
+      }
+      setData({
+        ...data,
+        usd_to_ghs_rate: Number(result.usd_to_ghs_rate) > 0 ? Number(result.usd_to_ghs_rate) : rate,
+      })
+      toast.success(result.message || `USD → GHS rate updated to ${rate}`)
+    } catch (saveError) {
+      toast.error(errorMessage(saveError, 'Could not save exchange rate'))
+    } finally {
+      setRateSaving(false)
     }
   }
 
@@ -810,7 +849,7 @@ export function AdminSettings() {
           </button>
           <button type="button" role="tab" aria-selected={tab === 'store'} className={tab === 'store' ? 'active' : ''} onClick={() => setTab('store')}>
             <span>Store</span>
-            <small>Purchases on / off</small>
+            <small>Purchases &amp; rate</small>
           </button>
           <button type="button" role="tab" aria-selected={tab === 'payments'} className={tab === 'payments' ? 'active' : ''} onClick={() => setTab('payments')}>
             <span>Payments</span>
@@ -867,16 +906,44 @@ export function AdminSettings() {
               </form>
             </section>
           ) : tab === 'store' ? (
-            <section className="admin-card store-toggle-card">
-              <div>
-                <h2>Store purchases</h2>
-                <p>{data.purchases_enabled ? 'Customers can add items and complete checkout.' : 'All items are unavailable for purchase right now.'}</p>
-              </div>
-              <button type="button" className={`store-toggle${data.purchases_enabled ? ' on' : ''}`} onClick={togglePurchases} aria-pressed={data.purchases_enabled}>
-                <span>{data.purchases_enabled ? 'Open' : 'Paused'}</span>
-                <i />
-              </button>
-            </section>
+            <div className="store-settings-stack">
+              <section className="admin-card store-toggle-card">
+                <div>
+                  <h2>Store purchases</h2>
+                  <p>{data.purchases_enabled ? 'Customers can add items and complete checkout.' : 'All items are unavailable for purchase right now.'}</p>
+                </div>
+                <button type="button" className={`store-toggle${data.purchases_enabled ? ' on' : ''}`} onClick={togglePurchases} aria-pressed={data.purchases_enabled}>
+                  <span>{data.purchases_enabled ? 'Open' : 'Paused'}</span>
+                  <i />
+                </button>
+              </section>
+              <form className="admin-card stack-form" onSubmit={saveRate}>
+                <div className="card-head">
+                  <div>
+                    <h2>USD → GHS rate</h2>
+                    <p>Reference rate stored with orders. Customers still pay in USD on Paystack.</p>
+                  </div>
+                </div>
+                <label>
+                  Exchange rate
+                  <input
+                    type="number"
+                    min="0.0001"
+                    step="0.0001"
+                    required
+                    value={data?.usd_to_ghs_rate ?? 15.5}
+                    onChange={(event) => setData({ ...data, usd_to_ghs_rate: event.target.value })}
+                    placeholder="e.g. 15.5"
+                  />
+                </label>
+                <p className="settings-hint">1 USD = {Number(data?.usd_to_ghs_rate) || 15.5} GHS</p>
+                <div className="form-actions">
+                  <button type="submit" className="admin-button primary" disabled={rateSaving}>
+                    <Check /> {rateSaving ? 'Saving…' : 'Save rate'}
+                  </button>
+                </div>
+              </form>
+            </div>
           ) : (
             <form className="admin-card payments-settings" onSubmit={savePayments}>
               <div className={`payment-mode-banner ${mode}${liveConfirmed && mode === 'live' ? ' confirmed' : ''}`}>

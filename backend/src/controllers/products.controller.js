@@ -76,6 +76,11 @@ exports.list = async (req, res, next) => {
       [...params, limit, offset]
     );
 
+    res.set({
+      'Cache-Control': 'no-store, no-cache, must-revalidate, private',
+      Pragma: 'no-cache',
+      Expires: '0',
+    });
     res.json({
       products: rows,
       pagination: {
@@ -102,6 +107,11 @@ exports.getOne = async (req, res, next) => {
       [byId ? Number(idOrSlug) : idOrSlug]
     );
     if (rows.length === 0) throw new ApiError(404, 'Product not found');
+    res.set({
+      'Cache-Control': 'no-store, no-cache, must-revalidate, private',
+      Pragma: 'no-cache',
+      Expires: '0',
+    });
     res.json({ product: rows[0] });
   } catch (err) {
     next(err);

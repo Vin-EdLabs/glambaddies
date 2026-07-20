@@ -136,6 +136,7 @@ CREATE TABLE store_settings (
     paystack_test_secret_key   TEXT NOT NULL DEFAULT '',
     paystack_live_public_key   TEXT NOT NULL DEFAULT '',
     paystack_live_secret_key   TEXT NOT NULL DEFAULT '',
+    usd_to_ghs_rate            NUMERIC(12,4) NOT NULL DEFAULT 15.5,
     updated_at                 TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
