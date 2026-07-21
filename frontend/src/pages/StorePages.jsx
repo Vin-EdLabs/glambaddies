@@ -3,7 +3,7 @@ import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import PaystackPop from '@paystack/inline-js'
 import toast from 'react-hot-toast'
 import { ArrowLeft, ArrowRight, Check, ChevronDown, Clock3, Filter, Heart, Minus, Package, Plus, RotateCcw, ShieldCheck, ShoppingBag, Truck, X } from 'lucide-react'
-import { EmptyState, ErrorState, LoadingGrid, ProductCard, CopyValue } from '../components'
+import { EmptyState, ErrorState, LoadingGrid, PasswordInput, ProductCard, CopyValue } from '../components'
 import { useAuth, useCart } from '../contexts'
 import api, { asArray, errorMessage, getProductCacheRev, mapProduct, mapProducts, syncCatalogueRevision } from '../services/api'
 import { formatCurrency } from '../utils'
@@ -48,16 +48,37 @@ function useProductCacheRev() {
 
 export function Home() {
   const productsRev = useProductCacheRev()
-  const { data: products, loading, error, retry } = useApi(
-    () => api.get('/products', { params: { limit: 8, sort: 'newest' } }).then(({ data }) => {
-      if (data?.revision != null) {
-        try { localStorage.setItem('vub_products_rev', String(data.revision)) } catch { /* ignore */ }
+  const { data, loading, error, retry } = useApi(
+    () => Promise.all([
+      api.get('/products', { params: { category: 'jewellery', limit: 4, sort: 'newest' } }),
+      api.get('/products', { params: { q: 'dress', limit: 4, sort: 'newest' } }),
+    ]).then(([jewelleryResult, dressesResult]) => {
+      if (jewelleryResult.data?.revision != null) {
+        try { localStorage.setItem('vub_products_rev', String(jewelleryResult.data.revision)) } catch { /* ignore */ }
       }
-      return mapProducts(data?.products)
+      return {
+        jewellery: mapProducts(jewelleryResult.data?.products),
+        dresses: mapProducts(dressesResult.data?.products),
+      }
     }), [productsRev],
   )
-  const list = asArray(products)
+  const jewellery = asArray(data?.jewellery)
+  const dresses = asArray(data?.dresses)
   const edits = [
+    {
+      to: '/shop?category=jewellery',
+      image: 'https://images.unsplash.com/photo-1515562141207-7a88fb7ce338?auto=format&fit=crop&w=1400&q=90',
+      eyebrow: 'Jewellery',
+      title: 'Gold & diamonds',
+      alt: 'Fine gold and diamond jewellery',
+    },
+    {
+      to: '/shop?category=flowers',
+      image: 'https://images.unsplash.com/photo-1561181286-d3fee7d55364?auto=format&fit=crop&w=1400&q=90',
+      eyebrow: 'Flowers',
+      title: 'Fresh bouquets',
+      alt: 'Hand-tied rose bouquet',
+    },
     {
       to: '/shop?category=fashion',
       image: 'https://images.unsplash.com/photo-1617137968427-85924c800a22?auto=format&fit=crop&w=1400&q=90',
@@ -111,7 +132,8 @@ export function Home() {
         <Link className="button light-button" to="/shop">Discover the collection <ArrowRight /></Link>
       </div>
     </section>
-    <section className="section"><div className="section-head"><div><span className="eyebrow">Just in</span><h2>New expressions</h2></div><Link to="/shop">View all <ArrowRight /></Link></div>{loading ? <LoadingGrid /> : error ? <ErrorState retry={retry} /> : list.length ? <div className="product-grid">{list.map((product) => <ProductCard product={product} key={product.id} />)}</div> : <EmptyState title="New pieces coming soon" text="Our next edit is being prepared." action="Browse the collection" to="/shop" />}</section>
+    <section className="section"><div className="section-head"><div><span className="eyebrow">Fine jewellery</span><h2>Gold & diamonds</h2></div><Link to="/shop?category=jewellery">View all <ArrowRight /></Link></div>{loading ? <LoadingGrid /> : error ? <ErrorState retry={retry} /> : jewellery.length ? <div className="product-grid">{jewellery.map((product) => <ProductCard product={product} key={product.id} />)}</div> : <EmptyState title="New pieces coming soon" text="Our next edit is being prepared." action="Browse the collection" to="/shop?category=jewellery" />}</section>
+    <section className="section"><div className="section-head"><div><span className="eyebrow">The dress edit</span><h2>Dresses to love</h2></div><Link to="/shop?q=dress">View all <ArrowRight /></Link></div>{loading ? <LoadingGrid /> : error ? <ErrorState retry={retry} /> : dresses.length ? <div className="product-grid">{dresses.map((product) => <ProductCard product={product} key={product.id} />)}</div> : <EmptyState title="New dresses coming soon" text="Our next edit is being prepared." action="Browse the collection" to="/shop" />}</section>
     <section className="editorial-grid">{edits.map((edit) => <Link to={edit.to} key={edit.to}><img src={edit.image} alt={edit.alt} /><div><span className="eyebrow">{edit.eyebrow}</span><h2>{edit.title}</h2><span>Shop now <ArrowRight /></span></div></Link>)}</section>
     <section className="manifesto"><span className="eyebrow">Our point of view</span><h2>Buy less. Choose beautifully.<br />Wear it your way.</h2><p>We bring together independent voices and enduring design, selected for quality, character and relevance beyond a single season.</p><Link to="/about">Discover Vublishop <ArrowRight /></Link></section>
     <section className="benefits"><div><Truck /><h3>Complimentary delivery</h3><p>On orders over $50</p></div><div><RotateCcw /><h3>Considered returns</h3><p>Easy returns within 14 days</p></div><div><ShieldCheck /><h3>Secure payment</h3><p>Protected checkout with Paystack</p></div></section>
@@ -610,7 +632,7 @@ export function Login({ register = false }) {
       setSubmitting(false)
     }
   }
-  return <div className="auth-page"><div className="auth-image"><img src="https://images.unsplash.com/photo-1537832816519-689ad163238b?auto=format&fit=crop&w=1200&q=85" alt="" /></div><form onSubmit={submit}><span className="eyebrow">Vublishop private client</span><h1>{isRegister ? 'Create an account' : 'Welcome back'}</h1><p>{isRegister ? 'Save your details and enjoy a more personal shopping experience.' : 'Sign in to view orders, saved pieces and account details.'}</p>{isRegister && <label>Full name<input name="name" required /></label>}<label>Email address<input name="email" type="email" required /></label><label>Password<input name="password" type="password" required minLength="8" /></label><button className="button full" disabled={submitting}>{submitting ? 'Please wait…' : isRegister ? 'Create account' : 'Sign in'} <ArrowRight /></button><button type="button" className="text-link" onClick={() => setIsRegister(!isRegister)}>{isRegister ? 'Already have an account? Sign in' : 'New to Vublishop? Create an account'}</button></form></div>
+  return <div className="auth-page"><div className="auth-image"><img src="https://images.unsplash.com/photo-1537832816519-689ad163238b?auto=format&fit=crop&w=1200&q=85" alt="" /></div><form onSubmit={submit}><span className="eyebrow">Vublishop private client</span><h1>{isRegister ? 'Create an account' : 'Welcome back'}</h1><p>{isRegister ? 'Save your details and enjoy a more personal shopping experience.' : 'Sign in to view orders, saved pieces and account details.'}</p>{isRegister && <label>Full name<input name="name" required /></label>}<label>Email address<input name="email" type="email" required /></label><label>Password<PasswordInput autoComplete={isRegister ? 'new-password' : 'current-password'} /></label><button className="button full" disabled={submitting}>{submitting ? 'Please wait…' : isRegister ? 'Create account' : 'Sign in'} <ArrowRight /></button><button type="button" className="text-link" onClick={() => setIsRegister(!isRegister)}>{isRegister ? 'Already have an account? Sign in' : 'New to Vublishop? Create an account'}</button></form></div>
 }
 
 export function Account() {
@@ -620,7 +642,7 @@ export function Account() {
   useEffect(() => { if (!customer) navigate('/login') }, [customer, navigate])
   if (!customer) return null
   const orderList = asArray(orders)
-  return <div className="account-page"><div className="page-title"><span className="eyebrow">Private client</span><h1>Good afternoon, {customer.name}.</h1></div><div className="account-grid"><aside><button className="active">Order history</button><button type="button" onClick={() => navigate('/track-order')}>Track order</button><button type="button" onClick={() => navigate('/shop')}>Continue shopping</button><button onClick={() => { logout(); navigate('/') }}>Sign out</button></aside><section><h2>Order history</h2>{loading ? <LoadingGrid /> : error ? <ErrorState retry={retry} /> : orderList.length ? orderList.map((order) => <div className="account-order" key={order.id}><div><small>Order ID</small><CopyValue value={String(order.id)} label="Copy order ID" /></div><div><small>Date</small><b>{new Date(order.created_at).toLocaleDateString()}</b></div><div><small>Total</small><b>{formatCurrency(Number(order.total ?? order.total_cents / 100))}</b></div><span className={`status ${order.status}`}>{order.status}</span><Link to={`/track-order`}>Track <ArrowRight /></Link></div>) : <EmptyState title="No orders yet" text="Your order history will appear here." action="Start shopping" to="/shop" />}</section></div></div>
+  return <div className="account-page"><div className="page-title"><span className="eyebrow">Private client</span><h1>Good afternoon, {customer.name}.</h1></div><div className="account-grid"><aside><button className="active">Order history</button><button type="button" onClick={() => navigate('/track-order')}>Track order</button><button type="button" onClick={() => navigate('/shop')}>Continue shopping</button><button onClick={() => { logout(); navigate('/') }}>Sign out</button></aside><section><h2>Order history</h2>{loading ? <LoadingGrid /> : error ? <ErrorState retry={retry} /> : orderList.length ? orderList.map((order) => <div className="account-order" key={order.id}><div><small>Order ID</small><CopyValue value={order.payment_reference || String(order.id)} label="Copy order reference" /></div><div><small>Date</small><b>{new Date(order.created_at).toLocaleDateString()}</b></div><div><small>Total</small><b>{formatCurrency(Number(order.total ?? order.total_cents / 100))}</b></div><span className={`status ${order.status}`}>{order.status}</span><Link to={order.payment_reference ? `/track-order?reference=${encodeURIComponent(order.payment_reference)}` : '/track-order'}>Track <ArrowRight /></Link></div>) : <EmptyState title="No orders yet" text="Your order history will appear here." action="Start shopping" to="/shop" />}</section></div></div>
 }
 
 export function About() {

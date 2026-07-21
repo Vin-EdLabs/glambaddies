@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link, Navigate, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import toast from 'react-hot-toast'
-import { ArrowRight, BarChart3, Box, Check, ChevronDown, Copy, Heart, LayoutDashboard, LogOut, Mail, Menu, Minus, Package, Plus, Search, Settings, ShoppingBag, Tag, Trash2, User, Users, X } from 'lucide-react'
+import { ArrowRight, BarChart3, Box, Check, ChevronDown, Copy, Eye, EyeOff, Heart, LayoutDashboard, LogOut, Mail, Menu, Minus, Package, Plus, Search, Settings, ShoppingBag, Tag, Trash2, User, Users, X } from 'lucide-react'
 import { useAuth, useCart } from './contexts'
 import { formatCurrency } from './utils'
 import api, { asArray, errorMessage } from './services/api'
@@ -28,12 +28,39 @@ export function CopyValue({ value, label = 'Copy' }) {
   )
 }
 
+export function PasswordInput({ name = 'password', minLength = 8, autoComplete = 'current-password', placeholder }) {
+  const [visible, setVisible] = useState(false)
+  return (
+    <span className="password-field">
+      <input
+        name={name}
+        type={visible ? 'text' : 'password'}
+        required
+        minLength={minLength}
+        autoComplete={autoComplete}
+        placeholder={placeholder}
+      />
+      <button
+        type="button"
+        className="password-toggle"
+        onClick={() => setVisible((v) => !v)}
+        aria-label={visible ? 'Hide password' : 'Show password'}
+      >
+        {visible ? <EyeOff size={18} /> : <Eye size={18} />}
+      </button>
+    </span>
+  )
+}
+
 export function ProductCard({ product }) {
   const { addItem } = useCart()
+  const [imageBroken, setImageBroken] = useState(false)
+  // A product without a working photo looks unprofessional — drop the card entirely.
+  if (imageBroken || !product.image) return null
   return <article className="product-card">
     <Link to={`/products/${product.slug || product.id}`} className="product-image">
       {product.badge && <span className="badge">{product.badge}</span>}
-      <img src={product.image} alt={product.name} loading="lazy" />
+      <img src={product.image} alt={product.name} loading="lazy" onError={() => setImageBroken(true)} />
       <button className="heart" aria-label="Save product"><Heart size={18} /></button>
     </Link>
     <div className="product-info">

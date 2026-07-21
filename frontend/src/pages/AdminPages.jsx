@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link, Navigate, useNavigate, useParams } from 'react-router-dom'
 import toast from 'react-hot-toast'
 import { ArrowRight, Box, Check, DollarSign, Edit3, Eye, EyeOff, Mail, Plus, Search, ShoppingCart, Trash2, Upload, Users } from 'lucide-react'
-import { EmptyState, ErrorState, LoadingGrid, CopyValue, ConfirmDialog } from '../components'
+import { EmptyState, ErrorState, LoadingGrid, CopyValue, ConfirmDialog, PasswordInput } from '../components'
 import { useAuth } from '../contexts'
 import api, { asArray, bustProductCache, errorMessage, mapProduct, mapProducts, resolveImageUrl } from '../services/api'
 import { formatCurrency } from '../utils'
@@ -40,7 +40,7 @@ export function AdminLogin() {
       setSubmitting(false)
     }
   }
-  return <div className="admin-login"><div className="admin-login-brand"><img src="/logo.png" alt="Vublishop" /><strong>Admin</strong></div><form onSubmit={submit}><span className="eyebrow">Store management</span><h1>Welcome back</h1><p>Sign in to manage your storefront.</p><label>Email address<input name="email" type="email" required /></label><label>Password<input name="password" type="password" required /></label><button className="button full" disabled={submitting}>{submitting ? 'Signing in…' : 'Sign in'} <ArrowRight /></button><small>Protected access for Vublishop staff only.</small></form></div>
+  return <div className="admin-login"><div className="admin-login-brand"><img src="/logo.png" alt="Vublishop" /><strong>Admin</strong></div><form onSubmit={submit}><span className="eyebrow">Store management</span><h1>Welcome back</h1><p>Sign in to manage your storefront.</p><label>Email address<input name="email" type="email" required /></label><label>Password<PasswordInput minLength={1} /></label><button className="button full" disabled={submitting}>{submitting ? 'Signing in…' : 'Sign in'} <ArrowRight /></button><small>Protected access for Vublishop staff only.</small></form></div>
 }
 
 export function Dashboard() {
