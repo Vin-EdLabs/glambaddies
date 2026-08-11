@@ -360,8 +360,26 @@ footer .logo:hover img {
 
 .section-head > a,
 .editorial-grid div > span,
-.manifesto > a {
+.manifesto > a,
+.browse-all {
   color: var(--pink);
+}
+
+.browse-all:hover {
+  background: var(--pink);
+  border-color: var(--pink);
+  color: #fff;
+}
+
+.browse-all--solid {
+  background: var(--pink);
+  border-color: var(--pink);
+  color: #fff;
+}
+
+.browse-all--solid:hover {
+  background: #1a1216;
+  border-color: #1a1216;
 }
 
 .editorial-grid > a:after {

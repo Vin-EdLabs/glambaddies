@@ -61,66 +61,165 @@ export function Home() {
   const productsRev = useProductCacheRev()
   const { data, loading, error, retry } = useApi(
     () => Promise.all([
-      api.get('/products', { params: { category: 'party-dresses', limit: 4, sort: 'newest' } }),
       api.get('/products', { params: { category: 'casual-dresses', limit: 4, sort: 'newest' } }),
-    ]).then(([partyResult, casualResult]) => {
-      if (partyResult.data?.revision != null) {
-        try { localStorage.setItem('glam_products_rev', String(partyResult.data.revision)) } catch { /* ignore */ }
+      api.get('/products', { params: { category: 'party-dresses', limit: 4, sort: 'newest' } }),
+      api.get('/products', { params: { category: 'school-dresses', limit: 4, sort: 'newest' } }),
+    ]).then(([casualResult, partyResult, schoolResult]) => {
+      const revision =
+        casualResult.data?.revision ??
+        partyResult.data?.revision ??
+        schoolResult.data?.revision
+      if (revision != null) {
+        try { localStorage.setItem('glam_products_rev', String(revision)) } catch { /* ignore */ }
       }
       return {
-        party: mapProducts(partyResult.data?.products),
         casual: mapProducts(casualResult.data?.products),
+        party: mapProducts(partyResult.data?.products),
+        school: mapProducts(schoolResult.data?.products),
       }
-    }), [productsRev],
+    }),
+    [productsRev],
   )
-  const party = asArray(data?.party)
-  const casual = asArray(data?.casual)
-  const edits = [
+
+  const categories = [
     {
+      key: 'casual',
+      eyebrow: 'Casual dresses',
+      title: 'Everyday glam',
+      text: 'Soft silhouettes for sunny days, weekends and little moments in between.',
       to: '/shop?category=casual-dresses',
-      image: '/edit-casual.jpg',
-      eyebrow: 'Casual',
-      title: 'Everyday dresses',
-      alt: 'Glamorous woman in a bold casual dress',
+      products: asArray(data?.casual),
     },
     {
+      key: 'party',
+      eyebrow: 'Party dresses',
+      title: 'Ready to celebrate',
+      text: 'Tulle, shimmer and statement pieces made for birthdays and big nights.',
       to: '/shop?category=party-dresses',
-      image: '/edit-party.jpg',
-      eyebrow: 'Party',
-      title: 'Celebration looks',
-      alt: 'Sexy evening party dress look',
+      products: asArray(data?.party),
     },
     {
+      key: 'school',
+      eyebrow: 'School dresses',
+      title: 'Smart day looks',
+      text: 'Neat, comfortable dresses that look polished from morning assembly to after school.',
       to: '/shop?category=school-dresses',
-      image: '/edit-school.jpg',
-      eyebrow: 'School',
-      title: 'Smart day dresses',
-      alt: 'Stylish smart day dress look',
+      products: asArray(data?.school),
     },
   ]
-  return <>
-    <SEO
-      title="Girls Dresses in Ghana"
-      description="Shop the latest girls dresses at GlamBaddies. Casual, party, and school dresses delivered across Ghana."
-      url={`${SITE_URL}/`}
-    />
-    <section className="hero-band" aria-label="GlamBaddies hero">
-      <div className="hero-section">
-        <img src="/hero.png" alt="GlamBaddies GH — Look good. Stay glam." />
-        <div className="hero-copy">
-          <img className="hero-brand" src="/logo.png" alt="GlamBaddies — Shop. Slay. Shine." />
-          <h1>Shop. Slay.<br /><em>Shine.</em></h1>
-          <p>Girls&apos; dresses only — bold, glamorous looks made to turn heads.</p>
-          <Link className="button light-button" to="/shop">Shop the latest girls&apos; dresses <ArrowRight /></Link>
+
+  return (
+    <>
+      <SEO
+        title="Girls Dresses in Ghana"
+        description="Shop the latest girls dresses at GlamBaddies. Casual, party, and school dresses delivered across Ghana."
+        url={`${SITE_URL}/`}
+      />
+
+      <section className="hero-band" aria-label="GlamBaddies hero">
+        <div className="hero-section">
+          <img src="/hero.png" alt="GlamBaddies GH — Look good. Stay glam." />
+          <div className="hero-copy">
+            <img className="hero-brand" src="/logo.png" alt="GlamBaddies — Shop. Slay. Shine." />
+            <h1>Shop. Slay.<br /><em>Shine.</em></h1>
+            <p>Girls&apos; dresses only — bold, glamorous looks made to turn heads.</p>
+            <Link className="button light-button" to="/shop">Shop the latest girls&apos; dresses <ArrowRight /></Link>
+          </div>
         </div>
-      </div>
-    </section>
-    <section className="section"><div className="section-head"><div><span className="eyebrow">Party edit</span><h2>Dresses for celebrating</h2></div><Link to="/shop?category=party-dresses">View all <ArrowRight /></Link></div>{loading ? <LoadingGrid /> : error ? <ErrorState retry={retry} /> : party.length ? <div className="product-grid">{party.map((product) => <ProductCard product={product} key={product.id} />)}</div> : <EmptyState title="New party dresses coming soon" text="Our next edit is being prepared." action="Browse all dresses" to="/shop" />}</section>
-    <section className="section"><div className="section-head"><div><span className="eyebrow">Everyday glam</span><h2>Casual dresses</h2></div><Link to="/shop?category=casual-dresses">View all <ArrowRight /></Link></div>{loading ? <LoadingGrid /> : error ? <ErrorState retry={retry} /> : casual.length ? <div className="product-grid">{casual.map((product) => <ProductCard product={product} key={product.id} />)}</div> : <EmptyState title="New casual dresses coming soon" text="Our next edit is being prepared." action="Browse all dresses" to="/shop" />}</section>
-    <section className="editorial-grid">{edits.map((edit) => <Link to={edit.to} key={edit.to}><img src={edit.image} alt={edit.alt} /><div><span className="eyebrow">{edit.eyebrow}</span><h2>{edit.title}</h2><span>Shop now <ArrowRight /></span></div></Link>)}</section>
-    <section className="manifesto"><span className="eyebrow">Shop · Slay · Shine</span><h2>Little dresses.<br />Big energy.</h2><p>GlamBaddies is a girls&apos; fashion boutique devoted only to dresses — bold cuts, soft glam, and looks that turn heads.</p><Link to="/about">Discover GlamBaddies <ArrowRight /></Link></section>
-    <section className="benefits"><div><Truck /><h3>Complimentary delivery</h3><p>On orders over GHS 500</p></div><div><RotateCcw /><h3>Considered returns</h3><p>Easy returns within 14 days</p></div><div><ShieldCheck /><h3>Secure payment</h3><p>Protected checkout with Paystack (GHS)</p></div></section>
-  </>
+      </section>
+
+      {categories.map((category) => (
+        <section className="section home-category" key={category.key}>
+          <div className="section-head home-category-head">
+            <div>
+              <span className="eyebrow">{category.eyebrow}</span>
+              <h2>{category.title}</h2>
+              <p className="home-category-copy">{category.text}</p>
+            </div>
+            <Link className="browse-all" to={category.to}>
+              Browse all
+              <ArrowRight size={16} />
+            </Link>
+          </div>
+
+          {loading ? (
+            <LoadingGrid />
+          ) : error ? (
+            <ErrorState retry={retry} />
+          ) : category.products.length ? (
+            <>
+              <div className="product-grid home-category-grid">
+                {category.products.map((product) => (
+                  <ProductCard product={product} key={product.id} />
+                ))}
+              </div>
+              <div className="home-category-foot">
+                <Link className="browse-all browse-all--solid" to={category.to}>
+                  Browse all {category.eyebrow.toLowerCase()}
+                  <ArrowRight size={16} />
+                </Link>
+              </div>
+            </>
+          ) : (
+            <EmptyState
+              title={`New ${category.eyebrow.toLowerCase()} coming soon`}
+              text="Our next edit is being prepared."
+              action="Browse all dresses"
+              to="/shop"
+            />
+          )}
+        </section>
+      ))}
+
+      <section className="editorial-grid editorial-grid--three" aria-label="Shop by category">
+        {[
+          {
+            to: '/shop?category=casual-dresses',
+            image: '/edit-casual.jpg',
+            eyebrow: 'Casual',
+            title: 'Everyday dresses',
+            alt: 'Casual girls dresses',
+          },
+          {
+            to: '/shop?category=party-dresses',
+            image: '/edit-party.jpg',
+            eyebrow: 'Party',
+            title: 'Celebration looks',
+            alt: 'Party girls dresses',
+          },
+          {
+            to: '/shop?category=school-dresses',
+            image: '/edit-school.jpg',
+            eyebrow: 'School',
+            title: 'Smart day dresses',
+            alt: 'School girls dresses',
+          },
+        ].map((edit) => (
+          <Link to={edit.to} key={edit.to}>
+            <img src={edit.image} alt={edit.alt} />
+            <div>
+              <span className="eyebrow">{edit.eyebrow}</span>
+              <h2>{edit.title}</h2>
+              <span className="browse-all browse-all--on-dark">Browse all <ArrowRight size={14} /></span>
+            </div>
+          </Link>
+        ))}
+      </section>
+
+      <section className="manifesto">
+        <span className="eyebrow">Shop · Slay · Shine</span>
+        <h2>Little dresses.<br />Big energy.</h2>
+        <p>GlamBaddies is a girls&apos; fashion boutique devoted only to dresses — bold cuts, soft glam, and looks that turn heads.</p>
+        <Link to="/about">Discover GlamBaddies <ArrowRight /></Link>
+      </section>
+
+      <section className="benefits">
+        <div><Truck /><h3>Complimentary delivery</h3><p>On orders over GHS 500</p></div>
+        <div><RotateCcw /><h3>Considered returns</h3><p>Easy returns within 14 days</p></div>
+        <div><ShieldCheck /><h3>Secure payment</h3><p>Protected checkout with Paystack (GHS)</p></div>
+      </section>
+    </>
+  )
 }
 
 export function Shop() {
