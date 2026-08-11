@@ -135,6 +135,7 @@ export function AdminProducts() {
   const navigate = useNavigate()
   const [page, setPage] = useState(1)
   const [query, setQuery] = useState('')
+  const [selected, setSelected] = useState(() => new Set())
   const [confirm, setConfirm] = useState(null)
   const [busy, setBusy] = useState(false)
   const { data, loading, error, retry, setData } = useAdminData(
@@ -145,29 +146,80 @@ export function AdminProducts() {
     })), [page],
   )
   const products = useMemo(() => asArray(data?.products).filter((product) => `${product.name} ${product.category}`.toLowerCase().includes(query.toLowerCase())), [data, query])
+  const selectedCount = selected.size
+  const allVisibleSelected = products.length > 0 && products.every((product) => selected.has(String(product.id)))
+
+  useEffect(() => {
+    setSelected(new Set())
+  }, [page, query])
+
+  const toggleOne = (id, checked) => {
+    const key = String(id)
+    setSelected((current) => {
+      const next = new Set(current)
+      if (checked) next.add(key)
+      else next.delete(key)
+      return next
+    })
+  }
+
+  const toggleAllVisible = (checked) => {
+    setSelected((current) => {
+      const next = new Set(current)
+      products.forEach((product) => {
+        const key = String(product.id)
+        if (checked) next.add(key)
+        else next.delete(key)
+      })
+      return next
+    })
+  }
+
   const openProduct = (id) => navigate(`${ADMIN_PATH}/products/${id}/edit`)
   const askDelete = (product) => setConfirm({
-    id: product.id,
+    ids: [product.id],
     title: `Delete ${product.name}?`,
     message: 'This dress will be removed from your catalogue.',
     detail: 'This permanently deletes the product and its images from the store.',
   })
+  const askBulkDelete = () => {
+    if (!selectedCount) return
+    const count = selectedCount
+    setConfirm({
+      ids: [...selected].map(Number),
+      title: count === 1 ? 'Delete 1 product?' : `Delete ${count} products?`,
+      message: count === 1
+        ? 'This dress will be removed from your catalogue.'
+        : 'These dresses will be removed from your catalogue.',
+      detail: 'This permanently deletes the selected products and their images from the store.',
+    })
+  }
   const runDelete = async () => {
-    if (!confirm?.id) return
-    const targetId = String(confirm.id)
+    const ids = asArray(confirm?.ids).map(Number).filter((id) => Number.isInteger(id) && id >= 1)
+    if (!ids.length) return
     setBusy(true)
     try {
-      const { data: result } = await api.delete(`/glam-baddies/products/${targetId}`)
+      const { data: result } = ids.length === 1
+        ? await api.delete(`/glam-baddies/products/${ids[0]}`)
+        : await api.post('/glam-baddies/products/bulk-delete', { ids })
+      const removed = new Set(
+        (Array.isArray(result?.ids) && result.ids.length ? result.ids : ids).map(String),
+      )
       setData({
         ...data,
-        products: asArray(data?.products).filter((product) => String(product.id) !== targetId),
+        products: asArray(data?.products).filter((product) => !removed.has(String(product.id))),
         pagination: {
           ...data.pagination,
-          total: Math.max(0, (data?.pagination?.total || 1) - 1),
+          total: Math.max(0, (data?.pagination?.total || removed.size) - removed.size),
         },
       })
+      setSelected((current) => {
+        const next = new Set(current)
+        removed.forEach((id) => next.delete(id))
+        return next
+      })
       bustProductCache(result.revision)
-      toast.success(result.deleted ? 'Product deleted' : 'Product deleted')
+      toast.success(result.message || (removed.size === 1 ? 'Product deleted' : `${removed.size} products deleted`))
       setConfirm(null)
     } catch (deleteError) {
       toast.error(errorMessage(deleteError, 'Could not delete product'))
@@ -182,8 +234,17 @@ export function AdminProducts() {
       intro={`${data?.pagination.total || 0} dresses in your catalogue`}
       action={<Link className="admin-button primary" to={`${ADMIN_PATH}/products/new`}><Plus /> Add New Product</Link>}
     >
-      <div className="admin-toolbar">
+      <div className="admin-toolbar products-toolbar">
         <label><Search /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search dresses..." /></label>
+        {selectedCount ? (
+          <div className="products-bulk-bar">
+            <span>{selectedCount} selected</span>
+            <button type="button" className="admin-button" onClick={() => setSelected(new Set())}>Clear</button>
+            <button type="button" className="admin-button danger" onClick={askBulkDelete}>
+              <Trash2 size={16} /> Delete selected
+            </button>
+          </div>
+        ) : null}
       </div>
       {loading ? <LoadingGrid /> : error ? <ErrorState retry={retry} /> : products.length ? (
         <>
@@ -192,6 +253,14 @@ export function AdminProducts() {
               <table>
                 <thead>
                   <tr>
+                    <th className="col-select">
+                      <input
+                        type="checkbox"
+                        checked={allVisibleSelected}
+                        aria-label="Select all products on this page"
+                        onChange={(event) => toggleAllVisible(event.target.checked)}
+                      />
+                    </th>
                     <th>Product</th>
                     <th>Category</th>
                     <th>Price (GHS)</th>
@@ -204,7 +273,7 @@ export function AdminProducts() {
                   {products.map((product) => (
                     <tr
                       key={product.id}
-                      className="clickable-row"
+                      className={`clickable-row${selected.has(String(product.id)) ? ' is-selected' : ''}`}
                       tabIndex={0}
                       onClick={() => openProduct(product.id)}
                       onKeyDown={(event) => {
@@ -214,6 +283,14 @@ export function AdminProducts() {
                         }
                       }}
                     >
+                      <td className="col-select" onClick={(event) => event.stopPropagation()}>
+                        <input
+                          type="checkbox"
+                          checked={selected.has(String(product.id))}
+                          aria-label={`Select ${product.name}`}
+                          onChange={(event) => toggleOne(product.id, event.target.checked)}
+                        />
+                      </td>
                       <td>
                         <div className="table-product">
                           <img
@@ -259,8 +336,24 @@ export function AdminProducts() {
           </section>
 
           <div className="products-mobile-list">
+            <label className="products-mobile-select-all">
+              <input
+                type="checkbox"
+                checked={allVisibleSelected}
+                onChange={(event) => toggleAllVisible(event.target.checked)}
+              />
+              Select all on this page
+            </label>
             {products.map((product) => (
-              <article className="product-mobile-card" key={`mobile-${product.id}`}>
+              <article className={`product-mobile-card${selected.has(String(product.id)) ? ' is-selected' : ''}`} key={`mobile-${product.id}`}>
+                <label className="product-mobile-check" onClick={(event) => event.stopPropagation()}>
+                  <input
+                    type="checkbox"
+                    checked={selected.has(String(product.id))}
+                    aria-label={`Select ${product.name}`}
+                    onChange={(event) => toggleOne(product.id, event.target.checked)}
+                  />
+                </label>
                 <button type="button" className="product-mobile-main" onClick={() => openProduct(product.id)}>
                   <img
                     src={product.image || fallbackImage}
@@ -299,7 +392,7 @@ export function AdminProducts() {
         title={confirm?.title}
         message={confirm?.message}
         detail={confirm?.detail}
-        confirmLabel="Delete product"
+        confirmLabel={asArray(confirm?.ids).length > 1 ? 'Delete selected' : 'Delete product'}
         busy={busy}
         onCancel={() => { if (!busy) setConfirm(null) }}
         onConfirm={runDelete}

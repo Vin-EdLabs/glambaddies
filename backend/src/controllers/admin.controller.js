@@ -747,6 +747,39 @@ exports.updateProduct = async (req, res, next) => {
   }
 };
 
+async function hardDeleteProductsByIds(ids) {
+  const validIds = [...new Set(
+    (Array.isArray(ids) ? ids : [])
+      .map(Number)
+      .filter((id) => Number.isInteger(id) && id >= 1),
+  )];
+  if (!validIds.length) return { deletedIds: [] };
+
+  const { rows: existing } = await db.query(
+    'SELECT id FROM products WHERE id = ANY($1::int[])',
+    [validIds]
+  );
+  const deletedIds = existing.map((row) => row.id);
+  if (!deletedIds.length) return { deletedIds: [] };
+
+  const { rows: images } = await db.query(
+    'SELECT url FROM product_images WHERE product_id = ANY($1::int[])',
+    [deletedIds]
+  );
+
+  await db.query('DELETE FROM cart_items WHERE product_id = ANY($1::int[])', [deletedIds]);
+  await db.query('DELETE FROM product_images WHERE product_id = ANY($1::int[])', [deletedIds]);
+  await db.query('DELETE FROM products WHERE id = ANY($1::int[])', [deletedIds]);
+
+  for (const { url } of images) {
+    if (!url || !String(url).includes('/uploads/')) continue;
+    const filename = path.basename(url);
+    await fs.unlink(path.join(UPLOAD_DIR, filename)).catch(() => {});
+  }
+
+  return { deletedIds };
+}
+
 // DELETE /api/glam-baddies/products/:id
 // Always hard-delete. Order history keeps line items (product_id SET NULL).
 exports.deleteProduct = async (req, res, next) => {
@@ -756,24 +789,8 @@ exports.deleteProduct = async (req, res, next) => {
       throw new ApiError(400, 'Invalid product id');
     }
 
-    const exists = await db.query('SELECT id FROM products WHERE id = $1', [id]);
-    if (exists.rows.length === 0) throw new ApiError(404, 'Product not found');
-
-    const images = await db.query(
-      'SELECT url FROM product_images WHERE product_id = $1',
-      [id]
-    );
-
-    // Remove cart rows first, then the product (images cascade; order_items null out).
-    await db.query('DELETE FROM cart_items WHERE product_id = $1', [id]);
-    await db.query('DELETE FROM product_images WHERE product_id = $1', [id]);
-    await db.query('DELETE FROM products WHERE id = $1', [id]);
-
-    for (const { url } of images.rows) {
-      if (!url || !String(url).includes('/uploads/')) continue;
-      const filename = path.basename(url);
-      await fs.unlink(path.join(UPLOAD_DIR, filename)).catch(() => {});
-    }
+    const { deletedIds } = await hardDeleteProductsByIds([id]);
+    if (!deletedIds.length) throw new ApiError(404, 'Product not found');
 
     let revision = Date.now();
     try {
@@ -789,6 +806,37 @@ exports.deleteProduct = async (req, res, next) => {
       id,
       revision,
       message: 'Product deleted',
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
+// POST /api/glam-baddies/products/bulk-delete  { ids: number[] }
+exports.deleteProductsBulk = async (req, res, next) => {
+  try {
+    const ids = Array.isArray(req.body?.ids) ? req.body.ids : [];
+    if (!ids.length) throw new ApiError(400, 'Select at least one product');
+
+    const { deletedIds } = await hardDeleteProductsByIds(ids);
+    if (!deletedIds.length) throw new ApiError(404, 'No matching products found');
+
+    let revision = Date.now();
+    try {
+      const { bumpCatalogueRevision } = require('./store.controller');
+      revision = await bumpCatalogueRevision();
+    } catch {
+      /* revision bump is best-effort */
+    }
+
+    return res.json({
+      deleted: true,
+      count: deletedIds.length,
+      ids: deletedIds,
+      revision,
+      message: deletedIds.length === 1
+        ? 'Product deleted'
+        : `${deletedIds.length} products deleted`,
     });
   } catch (err) {
     next(err);

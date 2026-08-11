@@ -21,6 +21,7 @@ router.post(
 
 router.get('/products', controller.listProducts);
 router.post('/products', upload.array('images', 12), controller.createProduct);
+router.post('/products/bulk-delete', controller.deleteProductsBulk);
 router.put('/products/:id', upload.array('images', 12), controller.updateProduct);
 router.delete('/products/:id', controller.deleteProduct);
 router.put('/products/:id/images/:imageId/primary', controller.setPrimaryImage);
