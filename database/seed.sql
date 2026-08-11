@@ -21,32 +21,31 @@ INSERT INTO admins (name, email, password_hash) VALUES
   ('GlamBaddies Admin', 'admin@glambaddies.com', '$2b$10$qGEh3y7F9P/bnv12BaiF.O80ggPyVj26ryEIrPQ3NImItibZsrbSm');
 
 -- ------------------------------------------------------------- categories
--- Top-level Dresses + dress subcategories only
+-- Only three dress categories
 INSERT INTO categories (name, slug, description) VALUES
-  ('Dresses',         'dresses',         'Girls'' dresses for every occasion'),
   ('Casual Dresses',  'casual-dresses',  'Everyday and weekend dresses'),
   ('Party Dresses',   'party-dresses',   'Celebration and special-occasion dresses'),
   ('School Dresses',  'school-dresses',  'Smart uniforms and school-day dresses');
 
 -- --------------------------------------------------------------- products (prices in GHS pesewas)
 INSERT INTO products (category_id, name, slug, description, price_cents, stock, is_active) VALUES
-  (2, 'Floral Summer Dress', 'floral-summer-dress',
+  (1, 'Floral Summer Dress', 'floral-summer-dress',
    'Light floaty dress in a fresh floral print with a smocked bodice and flutter sleeves. Perfect for sunny days.', 29900, 30, TRUE),
-  (3, 'Girls'' Tulle Party Dress', 'girls-tulle-party-dress',
+  (2, 'Girls'' Tulle Party Dress', 'girls-tulle-party-dress',
    'A dreamy layered tulle skirt with a satin bodice and bow sash. Sizes for ages 3–12. Made for twirling.', 34900, 35, TRUE),
-  (3, 'Elegant Evening Gown', 'elegant-evening-gown',
+  (2, 'Elegant Evening Gown', 'elegant-evening-gown',
    'Floor-length gown in flowing chiffon with a fitted waist and subtle shimmer. A red-carpet moment.', 58900, 12, TRUE),
-  (2, 'Polka Dot Midi Dress', 'polka-dot-midi-dress',
+  (1, 'Polka Dot Midi Dress', 'polka-dot-midi-dress',
    'Playful polka-dot midi with a wrap front, short sleeves and a flattering tie waist.', 27900, 28, TRUE),
-  (2, 'Girls'' Cotton Sundress', 'girls-cotton-sundress',
+  (1, 'Girls'' Cotton Sundress', 'girls-cotton-sundress',
    'Soft breathable cotton sundress with adjustable straps and a gathered skirt. Easy everyday wear for ages 2–10.', 19900, 45, TRUE),
-  (4, 'Smart Plaid School Dress', 'smart-plaid-school-dress',
+  (3, 'Smart Plaid School Dress', 'smart-plaid-school-dress',
    'Classic plaid school dress with a peter-pan collar and button front. Comfortable for all-day wear.', 24900, 40, TRUE),
-  (4, 'Navy Uniform Day Dress', 'navy-uniform-day-dress',
+  (3, 'Navy Uniform Day Dress', 'navy-uniform-day-dress',
    'Neat navy day dress with white piping and a removable sash. Ideal for school and assemblies.', 22900, 38, TRUE),
-  (3, 'Sparkle Birthday Dress', 'sparkle-birthday-dress',
+  (2, 'Sparkle Birthday Dress', 'sparkle-birthday-dress',
    'Shimmer tulle party dress with sequin bodice — birthday-ready and photo-perfect.', 39900, 22, TRUE),
-  (2, 'Linen Ruffle Casual Dress', 'linen-ruffle-casual-dress',
+  (1, 'Linen Ruffle Casual Dress', 'linen-ruffle-casual-dress',
    'Soft linen-blend casual dress with ruffle hem and side pockets. Everyday glam for little fashionistas.', 25900, 32, TRUE),
   (1, 'Classic A-Line Dress', 'classic-a-line-dress',
    'Timeless A-line silhouette in soft jersey. A wardrobe staple from playground to party.', 21900, 50, TRUE);

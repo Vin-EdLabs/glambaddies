@@ -6,8 +6,8 @@
   "scripts": {
     "install:all": "npm install --prefix frontend && npm install --prefix backend",
     "db": "npm run db --prefix backend",
-    "migrate": "node -e \"console.log('Apply: psql -d glambaddies_db -f database/schema.sql')\"",
-    "seed": "node -e \"console.log('Apply: psql -d glambaddies_db -f database/seed.sql')\"",
+    "migrate": "node backend/scripts/apply-sql.js database/migrate-dresses-only.sql",
+    "seed": "node backend/scripts/apply-sql.js database/seed.sql",
     "dev": "concurrently -n db,api,web -c magenta,green,blue \"npm run db --prefix backend\" \"npm run dev --prefix backend\" \"npm run dev --prefix frontend\"",
     "build": "npm run build --prefix backend && npm run build --prefix frontend",
     "build:backend": "npm run build --prefix backend",

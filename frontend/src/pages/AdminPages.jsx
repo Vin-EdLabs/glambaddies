@@ -150,7 +150,7 @@ export function AdminProducts() {
     id: product.id,
     title: `Delete ${product.name}?`,
     message: 'This dress will be removed from your catalogue.',
-    detail: 'If it appears in past orders it will be deactivated instead of hard-deleted.',
+    detail: 'This permanently deletes the product and its images from the store.',
   })
   const runDelete = async () => {
     if (!confirm?.id) return

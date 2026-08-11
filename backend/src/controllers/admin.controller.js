@@ -642,7 +642,7 @@ exports.updateProduct = async (req, res, next) => {
 };
 
 // DELETE /api/glam-baddies/products/:id
-// Soft-delete (is_active = false) always, then hard-delete when not in order history.
+// Always hard-delete. Order history keeps line items (product_id SET NULL).
 exports.deleteProduct = async (req, res, next) => {
   try {
     const id = Number(req.params.id);
@@ -653,13 +653,21 @@ exports.deleteProduct = async (req, res, next) => {
     const exists = await db.query('SELECT id FROM products WHERE id = $1', [id]);
     if (exists.rows.length === 0) throw new ApiError(404, 'Product not found');
 
-    // Always hide from GET /api/products (filters is_active = TRUE).
-    await db.query(
-      `UPDATE products
-       SET is_active = FALSE, updated_at = NOW()
-       WHERE id = $1`,
+    const images = await db.query(
+      'SELECT url FROM product_images WHERE product_id = $1',
       [id]
     );
+
+    // Remove cart rows first, then the product (images cascade; order_items null out).
+    await db.query('DELETE FROM cart_items WHERE product_id = $1', [id]);
+    await db.query('DELETE FROM product_images WHERE product_id = $1', [id]);
+    await db.query('DELETE FROM products WHERE id = $1', [id]);
+
+    for (const { url } of images.rows) {
+      if (!url || !String(url).includes('/uploads/')) continue;
+      const filename = path.basename(url);
+      await fs.unlink(path.join(UPLOAD_DIR, filename)).catch(() => {});
+    }
 
     let revision = Date.now();
     try {
@@ -669,48 +677,13 @@ exports.deleteProduct = async (req, res, next) => {
       /* revision bump is best-effort */
     }
 
-    const ordered = await db.query(
-      'SELECT 1 FROM order_items WHERE product_id = $1 LIMIT 1',
-      [id]
-    );
-
-    if (ordered.rows.length > 0) {
-      return res.json({
-        deleted: false,
-        deactivated: true,
-        id,
-        revision,
-        message: 'Product removed from store (kept for order history)',
-      });
-    }
-
-    try {
-      const images = await db.query(
-        'SELECT url FROM product_images WHERE product_id = $1',
-        [id]
-      );
-      await db.query('DELETE FROM products WHERE id = $1', [id]);
-      for (const { url } of images.rows) {
-        const filename = path.basename(url);
-        await fs.unlink(path.join(UPLOAD_DIR, filename)).catch(() => {});
-      }
-      return res.json({
-        deleted: true,
-        deactivated: true,
-        id,
-        revision,
-        message: 'Product deleted',
-      });
-    } catch {
-      // Soft-delete already applied — storefront will not show this product.
-      return res.json({
-        deleted: false,
-        deactivated: true,
-        id,
-        revision,
-        message: 'Product deactivated (could not hard-delete)',
-      });
-    }
+    return res.json({
+      deleted: true,
+      deactivated: false,
+      id,
+      revision,
+      message: 'Product deleted',
+    });
   } catch (err) {
     next(err);
   }

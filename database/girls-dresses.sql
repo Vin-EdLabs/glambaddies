@@ -4,10 +4,6 @@
 BEGIN;
 
 INSERT INTO categories (name, slug, description)
-SELECT 'Dresses', 'dresses', 'Girls'' dresses for every occasion'
-WHERE NOT EXISTS (SELECT 1 FROM categories WHERE slug = 'dresses');
-
-INSERT INTO categories (name, slug, description)
 SELECT 'Casual Dresses', 'casual-dresses', 'Everyday and weekend dresses'
 WHERE NOT EXISTS (SELECT 1 FROM categories WHERE slug = 'casual-dresses');
 
@@ -18,6 +14,13 @@ WHERE NOT EXISTS (SELECT 1 FROM categories WHERE slug = 'party-dresses');
 INSERT INTO categories (name, slug, description)
 SELECT 'School Dresses', 'school-dresses', 'Smart uniforms and school-day dresses'
 WHERE NOT EXISTS (SELECT 1 FROM categories WHERE slug = 'school-dresses');
+
+-- Remove legacy parent "dresses" + any non-dress categories if present
+DELETE FROM categories
+WHERE slug NOT IN ('casual-dresses', 'party-dresses', 'school-dresses')
+  AND NOT EXISTS (
+    SELECT 1 FROM products p WHERE p.category_id = categories.id
+  );
 
 INSERT INTO products (category_id, name, slug, description, price_cents, stock, is_active, created_at)
 SELECT c.id, v.name, v.slug, v.description, v.price_cents, v.stock, TRUE, NOW()

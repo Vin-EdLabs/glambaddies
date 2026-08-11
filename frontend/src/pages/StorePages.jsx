@@ -97,13 +97,6 @@ export function Home() {
       title: 'Smart day dresses',
       alt: 'Stylish smart day dress look',
     },
-    {
-      to: '/shop?category=dresses',
-      image: '/edit-all.jpg',
-      eyebrow: 'All dresses',
-      title: 'Shop the latest girls\' dresses',
-      alt: 'Hot fashion dress editorial',
-    },
   ]
   return <>
     <SEO

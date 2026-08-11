@@ -45,16 +45,33 @@ app.use(compression());
 app.use(cors(corsOptions));
 app.options('*', cors(corsOptions));
 
+const WINDOW_MS = 15 * 60 * 1000;
+
+/** Storefront browsing — generous so normal page loads are never blocked. */
 const apiLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: 300,
+  windowMs: WINDOW_MS,
+  max: 500,
   standardHeaders: true,
   legacyHeaders: false,
   message: 'Too many requests, please try again later.',
   skip: (req) =>
     req.method === 'OPTIONS' ||
-    String(req.originalUrl || '').startsWith('/api/webhook'),
+    String(req.originalUrl || '').startsWith('/api/webhook') ||
+    String(req.originalUrl || '').startsWith('/api/health'),
 });
+
+/** Auth endpoints — stricter to limit brute force. */
+const authLimiter = rateLimit({
+  windowMs: WINDOW_MS,
+  max: 50,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: 'Too many login attempts, please try again later.',
+  skip: (req) => req.method === 'OPTIONS',
+});
+
+app.use('/api/auth/login', authLimiter);
+app.use('/api/auth/register', authLimiter);
 app.use('/api/', apiLimiter);
 
 app.use(express.json({ limit: '1mb' }));
