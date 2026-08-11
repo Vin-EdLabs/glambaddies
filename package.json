@@ -9,7 +9,9 @@
     "migrate": "node -e \"console.log('Apply: psql -d glambaddies_db -f database/schema.sql')\"",
     "seed": "node -e \"console.log('Apply: psql -d glambaddies_db -f database/seed.sql')\"",
     "dev": "concurrently -n db,api,web -c magenta,green,blue \"npm run db --prefix backend\" \"npm run dev --prefix backend\" \"npm run dev --prefix frontend\"",
-    "build": "npm run build --prefix frontend",
+    "build": "npm run build --prefix backend && npm run build --prefix frontend",
+    "build:backend": "npm run build --prefix backend",
+    "build:frontend": "npm run build --prefix frontend",
     "lint": "npm run lint --prefix frontend && npm run lint --prefix backend",
     "test": "npm test --prefix backend"
   },

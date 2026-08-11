@@ -14,9 +14,10 @@ if [ -f package.json ]; then
   npm install
 fi
 
-# Backend dependencies
+# Backend dependencies + production check
 cd backend
 npm install
+npm run build
 cd "$ROOT_DIR"
 
 # Build frontend
