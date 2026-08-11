@@ -2,7 +2,35 @@
 
 Girls' fashion e-commerce — **girls' dresses only**. Prices and Paystack charges are in **GHS** (no USD conversion).
 
+
+
+cd /var/www/glambaddies && git pull
+cd backend && npm install && npm run build
+cd ../frontend && npm run build
+pm2 restart glambaddies-backend
+
 Production: https://www.glambaddies.com
+
+## Domain / DNS (must point at the VPS — not Vercel)
+
+If `www.glambaddies.com` opens an old Next.js site, DNS is still on **Vercel**.
+Uploaded product images and `/api` only work on the VPS + Nginx setup.
+
+1. In **Vercel** → project → Settings → Domains → **remove** `glambaddies.com` and `www.glambaddies.com`.
+2. At your DNS host (or Cloudflare):
+   - `www` → **A** record to your VPS public IP (or CNAME to the VPS hostname)
+   - apex `@` → **A** record to the same VPS IP  
+   - If using Cloudflare proxy (orange cloud), the origin must be the VPS — not `*.vercel-dns.com`.
+3. Wait for DNS to update, then check:
+   ```bash
+   curl -sI https://www.glambaddies.com/api/health
+   # expect: {"status":"ok","service":"glambaddies-api",...}
+   ```
+4. On the VPS, apply the uploads-safe Nginx config and reload:
+   ```bash
+   sudo cp /var/www/glambaddies/deploy/nginx-glambaddies.conf /etc/nginx/sites-available/glambaddies
+   sudo nginx -t && sudo systemctl reload nginx
+   ```
 
 ## Setup (local dev)
 
