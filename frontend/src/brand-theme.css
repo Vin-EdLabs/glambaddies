@@ -487,17 +487,83 @@ footer form button {
   pointer-events: none;
 }
 
-.footer-phone {
-  display: inline-block;
-  margin-top: 0.15rem;
-  color: #ffb6d9 !important;
-  font-size: 0.86rem !important;
-  letter-spacing: 0.04em;
-  font-weight: 600;
+.snapchat-float {
+  position: fixed;
+  right: max(1rem, env(safe-area-inset-right));
+  bottom: max(1.25rem, env(safe-area-inset-bottom));
+  z-index: 90;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.74rem 1rem 0.74rem 0.8rem;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.55);
+  background:
+    linear-gradient(145deg, #ffe56a 0%, #ffd84a 42%, #f7c948 100%);
+  color: #1a1216;
+  text-decoration: none;
+  font-family: 'Manrope', sans-serif;
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  box-shadow:
+    0 10px 24px rgba(233, 30, 140, 0.18),
+    0 14px 30px rgba(26, 18, 22, 0.18);
+  opacity: 0;
+  transform: translateY(18px) scale(0.94);
+  pointer-events: none;
+  transition: opacity 0.32s ease, transform 0.32s ease, box-shadow 0.2s ease;
 }
 
-.footer-phone:hover {
-  color: #fff !important;
+.snapchat-float.is-visible {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+  pointer-events: auto;
+}
+
+.snapchat-float svg {
+  width: 22px;
+  height: 22px;
+  flex-shrink: 0;
+  color: #1a1216;
+}
+
+.snapchat-float:hover {
+  box-shadow:
+    0 12px 28px rgba(233, 30, 140, 0.24),
+    0 18px 36px rgba(26, 18, 22, 0.22);
+  transform: translateY(-2px) scale(1.02);
+}
+
+.snapchat-float:focus-visible {
+  outline: 2px solid #e91e8c;
+  outline-offset: 3px;
+}
+
+@media (max-width: 480px) {
+  .snapchat-float {
+    padding: 0.82rem;
+    border-radius: 50%;
+  }
+
+  .snapchat-float span {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+  }
+
+  .snapchat-float svg {
+    width: 24px;
+    height: 24px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .snapchat-float {
+    transition: none;
+  }
 }
 
 .size-grid button.selected {

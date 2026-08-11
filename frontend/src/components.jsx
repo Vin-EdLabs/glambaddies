@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { Link, Navigate, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import toast from 'react-hot-toast'
@@ -229,6 +229,10 @@ export function StoreLayout() {
   const [newsletterEmail, setNewsletterEmail] = useState('')
   const [newsletterBusy, setNewsletterBusy] = useState(false)
   const [announcement, setAnnouncement] = useState('Shop · Slay · Shine')
+  const [showSnapchat, setShowSnapchat] = useState(false)
+  const snapchatLastY = useRef(0)
+  const snapchatHideTimer = useRef(0)
+  const snapchatPaused = useRef(false)
   const cart = useCart()
   const auth = useAuth()
   const theme = useTheme()
@@ -252,6 +256,67 @@ export function StoreLayout() {
       })
       .catch(() => {})
   }, [location.pathname])
+  useEffect(() => {
+    const SHOW_AFTER = 420
+    const HIDE_AFTER_MS = 3000
+
+    const clearHideTimer = () => {
+      if (snapchatHideTimer.current) {
+        window.clearTimeout(snapchatHideTimer.current)
+        snapchatHideTimer.current = 0
+      }
+    }
+
+    const scheduleHide = () => {
+      clearHideTimer()
+      if (snapchatPaused.current) return
+      snapchatHideTimer.current = window.setTimeout(() => {
+        if (!snapchatPaused.current) setShowSnapchat(false)
+      }, HIDE_AFTER_MS)
+    }
+
+    const onScroll = () => {
+      const y = window.scrollY || 0
+      const goingDown = y > snapchatLastY.current + 2
+      const goingUp = y < snapchatLastY.current - 2
+      snapchatLastY.current = y
+
+      if (goingUp || y < SHOW_AFTER) {
+        clearHideTimer()
+        setShowSnapchat(false)
+        return
+      }
+
+      if (goingDown && y >= SHOW_AFTER) {
+        setShowSnapchat(true)
+        scheduleHide()
+      } else if (y >= SHOW_AFTER) {
+        scheduleHide()
+      }
+    }
+
+    snapchatLastY.current = window.scrollY || 0
+    window.addEventListener('scroll', onScroll, { passive: true })
+    return () => {
+      window.removeEventListener('scroll', onScroll)
+      clearHideTimer()
+    }
+  }, [])
+  const pauseSnapchatHide = () => {
+    snapchatPaused.current = true
+    if (snapchatHideTimer.current) {
+      window.clearTimeout(snapchatHideTimer.current)
+      snapchatHideTimer.current = 0
+    }
+  }
+  const resumeSnapchatHide = () => {
+    snapchatPaused.current = false
+    if (showSnapchat) {
+      snapchatHideTimer.current = window.setTimeout(() => {
+        if (!snapchatPaused.current) setShowSnapchat(false)
+      }, 3000)
+    }
+  }
   const orderedCategories = asArray(categories)
   const navLinks = [
     { label: 'New arrivals', to: '/shop', isActive: location.pathname === '/shop' && !category },
@@ -333,7 +398,6 @@ export function StoreLayout() {
               <span>TikTok</span>
             </span>
           </div>
-          <a className="footer-phone" href="https://wa.me/233547296587">+233 54 729 6587</a>
         </div>
       </div>
       <div>
@@ -358,6 +422,22 @@ export function StoreLayout() {
       </div>
       <small>© 2026 GlamBaddies. Girls&apos; fashion.</small>
     </footer>
+    <a
+      className={`snapchat-float${showSnapchat ? ' is-visible' : ''}`}
+      href="https://snapchat.com/t/2sHB2Wxc"
+      target="_blank"
+      rel="noreferrer"
+      aria-label="Message us on Snapchat"
+      title="Message on Snapchat"
+      onMouseEnter={pauseSnapchatHide}
+      onMouseLeave={resumeSnapchatHide}
+      onFocus={pauseSnapchatHide}
+      onBlur={resumeSnapchatHide}
+      onTouchStart={pauseSnapchatHide}
+    >
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12.07 2c-2.8 0-4.2 2.12-4.2 4.3v1.4c0 .2-.08.84-.9 1.02-.42.1-.7.34-.7.72 0 .34.26.58.7.74.92.34 1.58 1.08 1.66 2.02.02.22-.1.38-.34.52-.78.46-1.9 1.12-1.9 2.1 0 1.12 1.24 1.7 2.54 2.04.24.06.42.28.42.54 0 .1-.02.2-.06.28-.26.5-.86 1.14-1.84 1.14-.18 0-.36-.02-.54-.06-.34-.08-.66.16-.66.5 0 .62 1.3 1.14 3.16 1.14 1.68 0 2.96-.4 3.78-.9.16-.1.34-.1.5 0 .82.5 2.1.9 3.78.9 1.86 0 3.16-.52 3.16-1.14 0-.34-.32-.58-.66-.5-.18.04-.36.06-.54.06-.98 0-1.58-.64-1.84-1.14a.7.7 0 0 0-.06-.28c0-.26.18-.48.42-.54 1.3-.34 2.54-.92 2.54-2.04 0-.98-1.12-1.64-1.9-2.1-.24-.14-.36-.3-.34-.52.08-.94.74-1.68 1.66-2.02.44-.16.7-.4.7-.74 0-.38-.28-.62-.7-.72-.82-.18-.9-.82-.9-1.02V6.3c0-2.18-1.4-4.3-4.2-4.3h-.14z"/></svg>
+      <span>Snapchat</span>
+    </a>
     <CartDrawer />
   </div>
 }
