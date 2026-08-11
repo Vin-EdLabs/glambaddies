@@ -7,7 +7,7 @@ const DEFAULT_ORIGINS = [
   'https://www.glambaddies.com',
   'https://glambaddies.com',
   'http://localhost:5173',
-  'http://localhost:3100',
+  'http://localhost:3000',
 ];
 
 function getAllowedOrigins() {

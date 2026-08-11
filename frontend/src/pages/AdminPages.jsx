@@ -175,7 +175,7 @@ export function AdminProducts() {
       setBusy(false)
     }
   }
-  const fallbackImage = 'https://images.unsplash.com/photo-1496747611176-843222e1e57c?auto=format&fit=crop&w=400&q=80'
+  const fallbackImage = '/logo.png'
   return (
     <AdminPage
       title="Products"

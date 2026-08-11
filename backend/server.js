@@ -7,10 +7,28 @@ const rateLimit = require('express-rate-limit');
 
 const { notFound, errorHandler } = require('./src/middleware/error');
 const { UPLOAD_DIR } = require('./src/middleware/upload');
-const { getAllowedOrigins, isProd } = require('./src/utils/site');
+const { isProd } = require('./src/utils/site');
 
 const app = express();
-const allowedOrigins = getAllowedOrigins();
+
+const allowedOrigins = [
+  'https://www.glambaddies.com',
+  'https://glambaddies.com',
+  'http://localhost:5173',
+  'http://localhost:3000',
+];
+
+const corsOptions = {
+  origin(origin, callback) {
+    if (!origin || allowedOrigins.includes(origin)) {
+      return callback(null, true);
+    }
+    return callback(new Error('Not allowed by CORS'));
+  },
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'Cache-Control', 'Pragma'],
+};
 
 // Behind Cloudflare / Nginx
 app.set('trust proxy', 1);
@@ -23,26 +41,19 @@ app.use(
 );
 app.use(compression());
 
-app.use(
-  cors({
-    origin(origin, callback) {
-      // Allow non-browser clients (no Origin header) and configured frontends
-      if (!origin || allowedOrigins.includes(origin)) {
-        return callback(null, true);
-      }
-      return callback(new Error(`CORS blocked for origin: ${origin}`));
-    },
-    credentials: true,
-  })
-);
+// CORS + preflight before routes / rate limits
+app.use(cors(corsOptions));
+app.options('*', cors(corsOptions));
 
 const apiLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 100,
+  max: 300,
   standardHeaders: true,
   legacyHeaders: false,
   message: 'Too many requests, please try again later.',
-  skip: (req) => String(req.originalUrl || '').startsWith('/api/webhook'),
+  skip: (req) =>
+    req.method === 'OPTIONS' ||
+    String(req.originalUrl || '').startsWith('/api/webhook'),
 });
 app.use('/api/', apiLimiter);
 

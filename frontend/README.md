@@ -11,7 +11,8 @@ npm install
 npm run dev
 ```
 
-Local defaults: API at `http://localhost:3100/api`, UI at `http://localhost:5173`.
+Local defaults: API at `/api` (Vite proxies to `:3100`), UI at `http://localhost:5173`.
+Production builds use `VITE_API_URL=/api` so Nginx serves the API.
 
 Production build env:
 

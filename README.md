@@ -54,7 +54,7 @@ VITE_APP_URL=https://www.glambaddies.com
 VITE_PAYSTACK_PUBLIC_KEY=pk_live_your_key
 ```
 
-Local frontend override: `VITE_API_URL=http://localhost:3100/api`
+Local frontend: `VITE_API_URL=/api` (Vite proxies to the API in development).
 
 Paystack charges are **GHS** at the catalogue price (pesewas). Webhook URL: `https://www.glambaddies.com/api/webhook/paystack`
 

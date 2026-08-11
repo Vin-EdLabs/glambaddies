@@ -1,11 +1,12 @@
 import axios from 'axios'
 
-export const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3100/api'
-export const API_ORIGIN = API_URL.replace(/\/api\/?$/, '')
+/** Relative `/api` so production traffic goes through Nginx (never bake in localhost/IPs). */
+export const API_URL = String(import.meta.env.VITE_API_URL || '/api').replace(/\/$/, '') || '/api'
+export const API_ORIGIN = API_URL.replace(/\/api$/i, '')
 
 const api = axios.create({
   baseURL: API_URL,
-  timeout: 15000,
+  timeout: 20000,
 })
 
 api.interceptors.request.use((config) => {
@@ -40,7 +41,7 @@ api.interceptors.response.use(
       localStorage.removeItem(`vub_${type}_token`)
       localStorage.removeItem(`vub_${type}`)
       // Only bounce signed-in users to login — guests can stay on checkout.
-      if (hadToken) {
+      if (hadToken && typeof window !== 'undefined') {
         const destination = isAdmin ? '/glam-baddies/login' : `/login?next=${encodeURIComponent(`${window.location.pathname}${window.location.search}`)}`
         if (!window.location.pathname.startsWith(destination.split('?')[0])) window.location.assign(destination)
       }
@@ -56,13 +57,17 @@ export const asArray = (value) => (Array.isArray(value) ? value : [])
 
 export const resolveImageUrl = (url) => {
   if (!url || url === 'undefined' || url === 'null' || url === 'Unknown') {
-    return 'https://images.unsplash.com/photo-1496747611176-843222e1e57c?auto=format&fit=crop&w=900&q=80'
+    return ''
   }
   const value = String(url).trim()
-  if (!value) {
-    return 'https://images.unsplash.com/photo-1496747611176-843222e1e57c?auto=format&fit=crop&w=900&q=80'
+  if (!value) return ''
+  if (/^https?:\/\//i.test(value)) return value
+  // Same-origin relative path (works with Nginx /uploads proxy)
+  if (value.startsWith('/')) return value
+  if (API_ORIGIN) {
+    return `${API_ORIGIN}/${value.replace(/^\.\//, '')}`
   }
-  return /^https?:\/\//i.test(value) ? value : `${API_ORIGIN}${value.startsWith('/') ? '' : '/'}${value}`
+  return `/${value.replace(/^\.\//, '')}`
 }
 
 export const mapProduct = (product) => {
@@ -72,7 +77,7 @@ export const mapProduct = (product) => {
       name: 'Unavailable product',
       price: 0,
       category: 'Uncategorised',
-      image: resolveImageUrl(),
+      image: '',
       images: [],
       stock: 0,
       sizes: [],
@@ -80,10 +85,10 @@ export const mapProduct = (product) => {
     }
   }
   const rawImages = asArray(product.images).filter((image) => {
-    const url = typeof image === 'string' ? image : image?.url
-    return Boolean(url && url !== 'undefined' && url !== 'null' && url !== 'Unknown')
+    const imageUrl = typeof image === 'string' ? image : image?.url
+    return Boolean(imageUrl && imageUrl !== 'undefined' && imageUrl !== 'null' && imageUrl !== 'Unknown')
   })
-  const images = rawImages.map((image) => resolveImageUrl(typeof image === 'string' ? image : image?.url))
+  const images = rawImages.map((image) => resolveImageUrl(typeof image === 'string' ? image : image?.url)).filter(Boolean)
   const primaryIndex = rawImages.findIndex((image) => image?.is_primary)
   return {
     ...product,
@@ -91,7 +96,7 @@ export const mapProduct = (product) => {
     price: Number(product.price ?? Number(product.price_cents || 0) / 100),
     category: product.category_name || product.category || 'Uncategorised',
     categorySlug: product.category_slug,
-    image: images[primaryIndex >= 0 ? primaryIndex : 0] || resolveImageUrl(product.image_url || product.image),
+    image: images[primaryIndex >= 0 ? primaryIndex : 0] || resolveImageUrl(product.image_url || product.image) || '',
     images,
     sizes: asArray(product.sizes),
     is_active: product.is_active !== false && product.is_active !== 'false' && product.is_active !== 0,
