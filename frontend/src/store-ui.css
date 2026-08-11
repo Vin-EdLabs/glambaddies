@@ -528,7 +528,7 @@
   grid-template-columns: repeat(3, 1fr) !important;
 }
 
-/* Home category rows — classic boutique layout */
+/* Home category rows â classic boutique layout */
 .home-category {
   border-bottom: 1px solid var(--line);
 }
@@ -555,6 +555,28 @@
   display: flex;
   justify-content: center;
   margin-top: 2.75rem;
+}
+
+.home-shop-all {
+  padding: 5.5rem 4vw;
+  text-align: center;
+  border-bottom: 1px solid var(--line);
+  background:
+    radial-gradient(520px 240px at 50% 0%, rgba(233, 30, 140, 0.08), transparent 70%),
+    var(--cream, #fff8f5);
+}
+.home-shop-all-inner {
+  max-width: 40rem;
+  margin: 0 auto;
+}
+.home-shop-all h2 {
+  margin: 0.85rem 0 0.9rem;
+  font-size: clamp(2.2rem, 4vw, 3.4rem);
+}
+.home-shop-all p {
+  margin: 0 auto 1.75rem;
+  color: var(--muted);
+  line-height: 1.55;
 }
 
 .browse-all {
@@ -631,7 +653,7 @@
   }
 }
 
-/* Admin polish Â GlamBaddies */
+/* Admin polish ÃÂ GlamBaddies */
 .admin-nav-section {
   margin: 1rem 0.9rem 0.35rem;
   font-size: 0.62rem;

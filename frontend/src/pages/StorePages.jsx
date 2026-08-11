@@ -137,7 +137,7 @@ export function Home() {
               <p className="home-category-copy">{category.text}</p>
             </div>
             <Link className="browse-all" to={category.to}>
-              Browse all
+              Shop all
               <ArrowRight size={16} />
             </Link>
           </div>
@@ -155,7 +155,7 @@ export function Home() {
               </div>
               <div className="home-category-foot">
                 <Link className="browse-all browse-all--solid" to={category.to}>
-                  Browse all {category.eyebrow.toLowerCase()}
+                  Shop all {category.eyebrow.toLowerCase()}
                   <ArrowRight size={16} />
                 </Link>
               </div>
@@ -164,12 +164,24 @@ export function Home() {
             <EmptyState
               title={`New ${category.eyebrow.toLowerCase()} coming soon`}
               text="Our next edit is being prepared."
-              action="Browse all dresses"
+              action="Shop all dresses"
               to="/shop"
             />
           )}
         </section>
       ))}
+
+      <section className="home-shop-all" aria-label="Shop every dress">
+        <div className="home-shop-all-inner">
+          <span className="eyebrow">The full collection</span>
+          <h2>Shop all dresses</h2>
+          <p>Casual, party and school — every GlamBaddies dress in one place.</p>
+          <Link className="browse-all browse-all--solid" to="/shop">
+            Shop all
+            <ArrowRight size={16} />
+          </Link>
+        </div>
+      </section>
 
       <section className="editorial-grid editorial-grid--three" aria-label="Shop by category">
         {[
@@ -200,7 +212,7 @@ export function Home() {
             <div>
               <span className="eyebrow">{edit.eyebrow}</span>
               <h2>{edit.title}</h2>
-              <span className="browse-all browse-all--on-dark">Browse all <ArrowRight size={14} /></span>
+              <span className="browse-all browse-all--on-dark">Shop all <ArrowRight size={14} /></span>
             </div>
           </Link>
         ))}
