@@ -2,6 +2,7 @@ const { Readable } = require('stream');
 const { SitemapStream, streamToPromise } = require('sitemap');
 const db = require('../config/db');
 const { getPublicSiteUrl } = require('../utils/site');
+const { dressCategorySql } = require('../utils/dressCategories');
 
 const PRODUCTION_HOST = 'https://www.glambaddies.com';
 
@@ -36,13 +37,14 @@ function absoluteAssetUrl(hostname, url) {
 /**
  * GET /sitemap.xml
  * Includes:
- *  - core marketing pages
- *  - active category shop filters
- *  - active product detail pages with image sitemap entries
+ *  - home, New arrivals (/shop), Our story (/about), Track order
+ *  - active dress-category shop filters
+ *  - active dress product detail pages with image sitemap entries
  */
 exports.getSitemap = async (req, res) => {
   try {
     const hostname = siteHost();
+    const isDressCategory = dressCategorySql('c');
 
     const [{ rows: categories }, { rows: products }] = await Promise.all([
       db.query(
@@ -52,7 +54,7 @@ exports.getSitemap = async (req, res) => {
          INNER JOIN products p
            ON p.category_id = c.id
           AND p.is_active = TRUE
-         WHERE c.slug IS NOT NULL AND c.slug <> ''
+         WHERE ${isDressCategory}
          GROUP BY c.id, c.slug, c.name
          ORDER BY c.name ASC`
       ),
@@ -73,9 +75,11 @@ exports.getSitemap = async (req, res) => {
                   '[]'::json
                 ) AS images
          FROM products p
+         INNER JOIN categories c ON c.id = p.category_id
          WHERE p.is_active = TRUE
            AND p.slug IS NOT NULL
            AND p.slug <> ''
+           AND ${isDressCategory}
          ORDER BY p.updated_at DESC NULLS LAST, p.id DESC`
       ),
     ]);
@@ -90,6 +94,7 @@ exports.getSitemap = async (req, res) => {
 
     const catalogueLastmod = toIsoDate(latestProductUpdate) || toIsoDate(new Date());
 
+    // Public routes only: home, New arrivals, Our story, Track order (+ dress catalogue URLs)
     const links = [
       {
         url: '/',
@@ -106,17 +111,12 @@ exports.getSitemap = async (req, res) => {
       {
         url: '/about',
         changefreq: 'monthly',
-        priority: 0.6,
+        priority: 0.7,
       },
       {
-        url: '/contact',
+        url: '/track-order',
         changefreq: 'monthly',
         priority: 0.6,
-      },
-      {
-        url: '/faq',
-        changefreq: 'monthly',
-        priority: 0.5,
       },
       ...categories.map((category) => ({
         url: `/shop?category=${encodeURIComponent(category.slug)}`,
