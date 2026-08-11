@@ -167,7 +167,7 @@ export function AdminProducts() {
         },
       })
       bustProductCache(result.revision)
-      toast.success(result.deleted ? 'Product deleted' : 'Product removed from store')
+      toast.success(result.deleted ? 'Product deleted' : 'Product deleted')
       setConfirm(null)
     } catch (deleteError) {
       toast.error(errorMessage(deleteError, 'Could not delete product'))
