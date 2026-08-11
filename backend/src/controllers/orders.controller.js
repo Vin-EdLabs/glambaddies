@@ -34,29 +34,62 @@ function normalizeShipping(shippingAddress) {
   ) {
     throw new ApiError(400, 'shipping_address object is required');
   }
-  const email = String(shippingAddress.email || '').trim().toLowerCase();
-  if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-    throw new ApiError(400, 'A valid email is required for checkout');
+  const rawEmail = String(shippingAddress.email || '').trim().toLowerCase();
+  if (rawEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(rawEmail)) {
+    throw new ApiError(400, 'Enter a valid email address');
   }
-  const firstName = String(shippingAddress.first_name || '').trim();
-  const lastName = String(shippingAddress.last_name || '').trim();
-  const street = String(shippingAddress.street || '').trim();
-  const city = String(shippingAddress.city || '').trim();
-  const country = String(shippingAddress.country || '').trim();
+  const fullName = String(
+    shippingAddress.full_name ||
+      shippingAddress.name ||
+      `${shippingAddress.first_name || ''} ${shippingAddress.last_name || ''}`
+  ).trim();
   const phone = String(shippingAddress.phone || '').trim();
-  if (!firstName || !lastName || !street || !city || !country || !phone) {
-    throw new ApiError(400, 'Please complete all required delivery fields');
+  const fulfillment = String(
+    shippingAddress.fulfillment_method || shippingAddress.delivery_method || 'delivery'
+  )
+    .trim()
+    .toLowerCase();
+  if (!['pickup', 'delivery'].includes(fulfillment)) {
+    throw new ApiError(400, 'Choose pickup or delivery');
   }
+  if (!fullName || !phone) {
+    throw new ApiError(400, 'Full name and phone number are required');
+  }
+  if (!rawEmail) {
+    throw new ApiError(400, 'Email is required for order updates and receipts');
+  }
+  const location = String(
+    shippingAddress.location || shippingAddress.street || ''
+  ).trim();
+  if (!location) {
+    throw new ApiError(400, 'Location is required');
+  }
+  const additionalNote = String(
+    shippingAddress.additional_note ||
+      shippingAddress.note ||
+      shippingAddress.location_note ||
+      ''
+  ).trim();
+  const email = rawEmail;
+  const [firstName, ...rest] = fullName.split(/\s+/);
+  const lastName = rest.join(' ') || firstName;
   return {
     ...shippingAddress,
     email,
+    customer_email: rawEmail,
+    email_provided: true,
+    full_name: fullName,
     first_name: firstName,
     last_name: lastName,
-    street,
-    city,
-    country,
     phone,
-    guest_name: `${firstName} ${lastName}`.trim(),
+    fulfillment_method: fulfillment,
+    location,
+    additional_note: additionalNote || null,
+    location_note: additionalNote || null,
+    street: location,
+    city: String(shippingAddress.city || (fulfillment === 'pickup' ? 'Pickup' : 'Accra')).trim(),
+    country: String(shippingAddress.country || 'Ghana').trim(),
+    guest_name: fullName,
   };
 }
 
@@ -123,7 +156,7 @@ async function createOrderFromItems(client, { userId, items, shippingAddress }) 
     rows: [order],
   } = await client.query(
     `INSERT INTO orders (user_id, status, currency, total_cents, shipping_address)
-     VALUES ($1, 'pending', 'USD', $2, $3)
+     VALUES ($1, 'pending', 'GHS', $2, $3)
      RETURNING id, status, currency, total_cents, shipping_address, created_at, user_id`,
     [userId, totalCents, JSON.stringify(shippingAddress)]
   );
@@ -265,7 +298,8 @@ exports.listMine = async (req, res, next) => {
     const { rows } = await db.query(
       `SELECT o.id, o.status, o.currency, o.total_cents,
               ROUND(o.total_cents / 100.0, 2) AS total,
-              o.payment_reference, o.paid_at, o.created_at, ${ORDER_ITEMS_JSON}
+              o.payment_reference, o.paid_at, o.created_at,
+              o.shipping_address, ${ORDER_ITEMS_JSON}
        FROM orders o
        WHERE o.user_id = $1
        ORDER BY o.created_at DESC
@@ -308,45 +342,77 @@ exports.getOne = async (req, res, next) => {
   }
 };
 
-// GET /api/orders/track/:reference -- public; payment reference only
-exports.trackByReference = async (req, res, next) => {
+// GET /api/orders/track?phone=... -- public; phone number only
+exports.trackByPhone = async (req, res, next) => {
   try {
-    const reference = String(req.params.reference || '').trim();
-    if (!reference || !/^[\w-]{6,100}$/.test(reference)) {
-      throw new ApiError(400, 'Enter a valid payment reference');
+    const raw = String(req.query.phone || req.params.phone || '').trim();
+    const digits = raw.replace(/\D/g, '');
+    if (digits.length < 9 || digits.length > 15) {
+      throw new ApiError(400, 'Enter a valid phone number');
     }
+    const matchDigits = digits.slice(-9);
 
     const { rows } = await db.query(
       `SELECT o.id, o.status, o.currency, o.total_cents,
               ROUND(o.total_cents / 100.0, 2) AS total,
               o.payment_reference, o.paid_at, o.created_at, o.updated_at,
+              o.shipping_address,
               ${ORDER_ITEMS_JSON}
        FROM orders o
-       WHERE o.payment_reference = $1`,
-      [reference]
+       LEFT JOIN users u ON u.id = o.user_id
+       WHERE right(regexp_replace(COALESCE(o.shipping_address->>'phone', ''), '\\D', '', 'g'), 9) = $1
+          OR right(regexp_replace(COALESCE(u.phone, ''), '\\D', '', 'g'), 9) = $1
+       ORDER BY o.created_at DESC
+       LIMIT 20`,
+      [matchDigits]
     );
+
     if (rows.length === 0) {
-      throw new ApiError(404, 'No order found for that payment reference');
+      throw new ApiError(404, 'No orders found for that phone number');
     }
 
-    const order = rows[0];
-    res.json({
-      order: {
+    const orders = rows.map((order) => {
+      const address =
+        typeof order.shipping_address === 'string'
+          ? JSON.parse(order.shipping_address)
+          : order.shipping_address || {};
+      const bagItems = Array.isArray(address.bag_items) ? address.bag_items : [];
+      return {
         id: order.id,
         status: order.status,
         currency: order.currency,
         total: order.total,
         total_cents: order.total_cents,
-        payment_reference: order.payment_reference,
         paid_at: order.paid_at,
         created_at: order.created_at,
         updated_at: order.updated_at,
-        items: (order.items || []).map((item) => ({
-          product_name: item.product_name,
-          quantity: item.quantity,
-          unit_price_cents: item.unit_price_cents,
-        })),
-      },
+        fulfillment_method: address.fulfillment_method || 'delivery',
+        full_name: address.full_name || address.guest_name || null,
+        phone: address.phone || null,
+        location: address.location || address.street || null,
+        additional_note: address.additional_note || address.location_note || null,
+        cancel_reason: address.cancel_reason || null,
+        cancelled_at: address.cancelled_at || null,
+        items: (order.items || []).map((item) => {
+          const snap =
+            bagItems.find(
+              (bag) => Number(bag.product_id) === Number(item.product_id)
+            ) || {};
+          return {
+            product_name: item.product_name,
+            quantity: item.quantity,
+            unit_price_cents: item.unit_price_cents,
+            color: snap.color || null,
+            size: snap.size || null,
+          };
+        }),
+      };
+    });
+
+    res.json({
+      phone: orders[0]?.phone || raw,
+      orders,
+      order: orders[0],
     });
   } catch (err) {
     next(err);

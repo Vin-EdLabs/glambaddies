@@ -1,3 +1,4 @@
+-- DEPRECATED for GlamBaddies — food catalogue not used.
 -- More catalogue items + Food & Grocery (fruits and pantry).
 -- Safe to re-run. Ensures every product here gets a primary image.
 --

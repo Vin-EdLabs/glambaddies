@@ -5,6 +5,7 @@ dist/
 *.log
 backend/uploads/*
 !backend/uploads/.gitkeep
+backend/.pgdata/
 .DS_Store
 Thumbs.db
 coverage/

@@ -9,6 +9,13 @@
   font-size: 0.78rem;
   letter-spacing: 0.04em;
   transition: 0.2s ease;
+  max-width: 100%;
+  min-width: 0;
+}
+.copy-chip span {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  text-align: left;
 }
 .copy-chip:hover {
   border-color: var(--ink);
@@ -35,4 +42,21 @@ a.table-icon {
 }
 a.table-icon:hover {
   border-color: var(--ink);
+}
+
+.data-table tbody tr.clickable-row {
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.data-table tbody tr.clickable-row:hover,
+.data-table tbody tr.clickable-row:focus-visible {
+  background: rgba(233, 30, 140, 0.06);
+  outline: none;
+}
+
+.data-table tbody tr.clickable-row .row-actions {
+  display: inline-flex;
+  gap: 0.35rem;
+  align-items: center;
 }

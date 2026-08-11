@@ -15,9 +15,10 @@ router.put('/settings', controller.updateSettings);
 router.put('/settings/rate', controller.updateExchangeRate);
 
 router.get('/products', controller.listProducts);
-router.post('/products', upload.array('images', 5), controller.createProduct);
-router.put('/products/:id', upload.array('images', 5), controller.updateProduct);
+router.post('/products', upload.array('images', 12), controller.createProduct);
+router.put('/products/:id', upload.array('images', 12), controller.updateProduct);
 router.delete('/products/:id', controller.deleteProduct);
+router.put('/products/:id/images/:imageId/primary', controller.setPrimaryImage);
 router.delete('/products/:id/images/:imageId', controller.deleteProductImage);
 
 router.post('/categories', controller.createCategory);
@@ -33,6 +34,9 @@ router.delete('/orders/:id', controller.deleteOrder);
 router.post('/orders/:id/delete', controller.deleteOrder);
 
 router.put('/password', controller.changePassword);
+router.get('/admins', controller.listAdmins);
+router.post('/admins', controller.createAdmin);
+router.delete('/admins/:id', controller.deleteAdmin);
 
 router.get('/users', controller.listUsers);
 

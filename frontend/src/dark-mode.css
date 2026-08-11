@@ -1,0 +1,564 @@
+/* GlamBaddies dark mode — pink, black & white (light mode unchanged) */
+html[data-theme="dark"] {
+  color-scheme: dark;
+  --ink: #ffffff;
+  --muted: #e0e0e0;
+  --cream: #1a1a1a;
+  --paper: #0d0d0d;
+  --line: #2e2e2e;
+  --sage: #ff69b4;
+  --admin: #111111;
+  --admin-bg: #0d0d0d;
+  --pink: #e91e8c;
+  --pink-soft: #ff69b4;
+  --pink-border: rgba(233, 30, 140, 0.6);
+  --surface: #1a1a1a;
+}
+
+html[data-theme="dark"] body,
+html[data-theme="dark"] .store {
+  background: #0d0d0d;
+  color: #ffffff;
+}
+
+html[data-theme="dark"] p { color: #e0e0e0; }
+
+html[data-theme="dark"] .logo img,
+html[data-theme="dark"] .hero-brand,
+html[data-theme="dark"] .logo.light img,
+html[data-theme="dark"] .admin-brand-logo {
+  box-shadow: 0 8px 24px rgba(233, 30, 140, 0.35);
+}
+
+html[data-theme="dark"] .announcement {
+  background: #000000;
+  color: #ffffff;
+  border-bottom: 0;
+}
+
+html[data-theme="dark"] .site-header {
+  background: rgba(17, 17, 17, 0.96);
+  border-bottom-color: #2e2e2e;
+  color: #ffffff;
+}
+
+html[data-theme="dark"] .logo-wordmark {
+  background: none;
+  -webkit-background-clip: unset;
+  background-clip: unset;
+  color: #ffffff;
+}
+
+html[data-theme="dark"] .site-header nav a,
+html[data-theme="dark"] .header-actions a,
+html[data-theme="dark"] .header-actions button {
+  color: #ffffff;
+}
+
+html[data-theme="dark"] .site-header nav a.active,
+html[data-theme="dark"] .site-header nav a:hover,
+html[data-theme="dark"] .header-story:hover,
+html[data-theme="dark"] .header-story.active {
+  color: #f0f0f0;
+  opacity: 0.9;
+}
+
+html[data-theme="dark"] .site-header nav a:after {
+  background: #f0f0f0;
+}
+
+html[data-theme="dark"] .header-actions span {
+  background: #e91e8c;
+  color: #ffffff;
+}
+
+html[data-theme="dark"] .button,
+html[data-theme="dark"] .admin-button.primary {
+  background: #e91e8c;
+  border-color: #e91e8c;
+  color: #ffffff;
+}
+
+html[data-theme="dark"] .button:hover,
+html[data-theme="dark"] .admin-button.primary:hover {
+  background: #ff69b4;
+  border-color: #ff69b4;
+}
+
+html[data-theme="dark"] .button.light-button,
+html[data-theme="dark"] .admin-button {
+  background: transparent;
+  border-color: #e91e8c;
+  color: #ff69b4;
+}
+
+html[data-theme="dark"] .button.light-button:hover,
+html[data-theme="dark"] .admin-button:hover {
+  background: rgba(233, 30, 140, 0.15);
+  color: #ffffff;
+  border-color: #ff69b4;
+}
+
+html[data-theme="dark"] a:hover,
+html[data-theme="dark"] .text-link,
+html[data-theme="dark"] .quick-add {
+  color: #ff69b4;
+}
+
+html[data-theme="dark"] .badge {
+  background: #e91e8c;
+  color: #ffffff;
+}
+
+html[data-theme="dark"] .product-image,
+html[data-theme="dark"] .cart-row img,
+html[data-theme="dark"] .summary-item img {
+  background: #1a1a1a;
+}
+
+html[data-theme="dark"] .heart {
+  background: rgba(26, 26, 26, 0.9);
+  color: #ff69b4;
+}
+
+html[data-theme="dark"] .manifesto {
+  background: #111111;
+}
+
+html[data-theme="dark"] .benefits,
+html[data-theme="dark"] .catalog-toolbar,
+html[data-theme="dark"] .catalog aside,
+html[data-theme="dark"] .filter-group,
+html[data-theme="dark"] footer {
+  border-color: #2e2e2e;
+}
+
+html[data-theme="dark"] footer {
+  background: #0d0d0d;
+  color: #ffffff;
+}
+
+html[data-theme="dark"] footer a:hover {
+  color: #ff69b4;
+}
+
+html[data-theme="dark"] .cart-drawer {
+  background: #1a1a1a;
+  border-left: 1px solid #2e2e2e;
+}
+
+html[data-theme="dark"] .drawer-head,
+html[data-theme="dark"] .drawer-foot,
+html[data-theme="dark"] .cart-row {
+  border-color: #2e2e2e;
+}
+
+html[data-theme="dark"] input,
+html[data-theme="dark"] select,
+html[data-theme="dark"] textarea,
+html[data-theme="dark"] .checkout-page input,
+html[data-theme="dark"] .checkout-page select,
+html[data-theme="dark"] .auth-page input,
+html[data-theme="dark"] .stack-form input,
+html[data-theme="dark"] .product-form input,
+html[data-theme="dark"] .product-form select,
+html[data-theme="dark"] .product-form textarea {
+  background: #1a1a1a;
+  border-color: #2e2e2e;
+  color: #ffffff;
+}
+
+html[data-theme="dark"] input:focus,
+html[data-theme="dark"] select:focus,
+html[data-theme="dark"] textarea:focus,
+html[data-theme="dark"] .checkout-page input:focus,
+html[data-theme="dark"] .auth-page input:focus,
+html[data-theme="dark"] .product-form input:focus,
+html[data-theme="dark"] .product-form select:focus,
+html[data-theme="dark"] .product-form textarea:focus,
+html[data-theme="dark"] .admin-toolbar input:focus,
+html[data-theme="dark"] .admin-search input:focus {
+  border-color: #e91e8c;
+  outline: 1px solid rgba(233, 30, 140, 0.6);
+  box-shadow: 0 0 0 2px rgba(233, 30, 140, 0.25);
+}
+
+html[data-theme="dark"] .order-summary,
+html[data-theme="dark"] .auth-page,
+html[data-theme="dark"] .size-grid button {
+  background: #1a1a1a;
+  border-color: #2e2e2e;
+  color: #ffffff;
+}
+
+html[data-theme="dark"] .size-grid button.selected {
+  background: #e91e8c;
+  border-color: #e91e8c;
+  color: #ffffff;
+}
+
+html[data-theme="dark"] .quantity {
+  border-color: #2e2e2e;
+}
+
+html[data-theme="dark"] .filter-group input {
+  accent-color: #e91e8c;
+}
+
+/* Admin dark */
+html[data-theme="dark"] .admin-shell {
+  background: #0d0d0d;
+  color: #ffffff;
+}
+
+html[data-theme="dark"] .admin-shell > aside {
+  background: #111111;
+  color: #e0e0e0;
+  border-right: 1px solid #2e2e2e;
+}
+
+html[data-theme="dark"] .admin-brand {
+  border-bottom-color: #2e2e2e;
+  color: #ffffff;
+}
+
+html[data-theme="dark"] .admin-shell > aside nav a.active {
+  background: rgba(233, 30, 140, 0.18);
+  color: #ffffff;
+  box-shadow: inset 3px 0 0 #e91e8c;
+}
+
+html[data-theme="dark"] .admin-shell > aside nav a:hover {
+  color: #ff69b4;
+}
+
+html[data-theme="dark"] .admin-main > header {
+  background: #111111;
+  border-bottom-color: #2e2e2e;
+  color: #ffffff;
+}
+
+html[data-theme="dark"] .admin-search {
+  background: #1a1a1a;
+  border: 1px solid #2e2e2e;
+}
+
+html[data-theme="dark"] .admin-search input {
+  color: #ffffff;
+}
+
+html[data-theme="dark"] .admin-card,
+html[data-theme="dark"] .stat-card,
+html[data-theme="dark"] .admin-toolbar,
+html[data-theme="dark"] .order-mini-stats > div,
+html[data-theme="dark"] .settings-nav,
+html[data-theme="dark"] .admin-login form,
+html[data-theme="dark"] .confirm-dialog {
+  background: #1a1a1a;
+  border-color: #2e2e2e;
+  color: #ffffff;
+}
+
+html[data-theme="dark"] .stat-card {
+  border-color: rgba(233, 30, 140, 0.45);
+}
+
+html[data-theme="dark"] .data-table th {
+  background: #111111;
+  color: #e0e0e0;
+  border-bottom-color: #2e2e2e;
+}
+
+html[data-theme="dark"] .data-table td {
+  border-bottom-color: #2e2e2e;
+  color: #ffffff;
+}
+
+html[data-theme="dark"] .row-actions a,
+html[data-theme="dark"] .row-actions button,
+html[data-theme="dark"] .table-icon,
+html[data-theme="dark"] .card-head > a {
+  color: #ff69b4;
+}
+
+html[data-theme="dark"] .row-actions a:hover,
+html[data-theme="dark"] .table-icon:hover,
+html[data-theme="dark"] .card-head > a:hover {
+  color: #e91e8c;
+}
+
+html[data-theme="dark"] .admin-button.danger {
+  background: transparent;
+  border-color: #ff69b4;
+  color: #ff69b4;
+}
+
+html[data-theme="dark"] .status.processing,
+html[data-theme="dark"] .status.pending {
+  background: rgba(255, 105, 180, 0.2);
+  color: #ff69b4;
+}
+
+html[data-theme="dark"] .status.shipped {
+  background: rgba(233, 30, 140, 0.2);
+  color: #ff69b4;
+}
+
+html[data-theme="dark"] .status.delivered,
+html[data-theme="dark"] .status.active,
+html[data-theme="dark"] .status.paid {
+  background: rgba(233, 30, 140, 0.28);
+  color: #ffffff;
+}
+
+html[data-theme="dark"] .status.cancelled,
+html[data-theme="dark"] .status.draft {
+  background: #2e2e2e;
+  color: #e0e0e0;
+}
+
+html[data-theme="dark"] .settings-nav button.active {
+  background: #e91e8c;
+}
+
+html[data-theme="dark"] .settings-tabs button.active,
+html[data-theme="dark"] .mode-switch button.active {
+  background: #e91e8c;
+  border-color: #e91e8c;
+  color: #ffffff;
+}
+
+html[data-theme="dark"] .theme-toggle:hover {
+  color: #ff69b4;
+  border-color: #e91e8c;
+}
+
+html[data-theme="dark"] .admin-breadcrumbs a {
+  color: #ff69b4;
+}
+
+html[data-theme="dark"] .admin-login {
+  background: #0d0d0d;
+}
+
+html[data-theme="dark"] .bars span,
+html[data-theme="dark"] .orders-bar > span,
+html[data-theme="dark"] .chart-line,
+html[data-theme="dark"] .chart-dot {
+  background: #e91e8c;
+  stroke: #e91e8c;
+  fill: #e91e8c;
+}
+
+html[data-theme="dark"] .top-product-row > span:after {
+  background: linear-gradient(90deg, #ff69b4, #e91e8c);
+}
+
+/* Admin readability — settings + controls */
+html[data-theme="dark"] .admin-shell,
+html[data-theme="dark"] .admin-page,
+html[data-theme="dark"] .admin-card,
+html[data-theme="dark"] .admin-card h2,
+html[data-theme="dark"] .admin-card h3,
+html[data-theme="dark"] .admin-title h1,
+html[data-theme="dark"] .card-head h2,
+html[data-theme="dark"] .card-head p,
+html[data-theme="dark"] .settings-hint,
+html[data-theme="dark"] .admin-page p,
+html[data-theme="dark"] .admin-page small,
+html[data-theme="dark"] .admin-page label,
+html[data-theme="dark"] .password-form label,
+html[data-theme="dark"] .payments-settings > label,
+html[data-theme="dark"] .stack-form label,
+html[data-theme="dark"] .product-form label {
+  color: #f3f3f3;
+}
+
+html[data-theme="dark"] .card-head p,
+html[data-theme="dark"] .settings-hint,
+html[data-theme="dark"] .admin-title p,
+html[data-theme="dark"] .account-profile small,
+html[data-theme="dark"] .password-form label,
+html[data-theme="dark"] .payments-settings > label {
+  color: #c4c4c4 !important;
+}
+
+html[data-theme="dark"] .settings-nav button span {
+  color: #f5f5f5;
+}
+
+html[data-theme="dark"] .settings-nav button small {
+  color: #b0b0b0;
+}
+
+html[data-theme="dark"] .settings-nav button.active span,
+html[data-theme="dark"] .settings-nav button.active small {
+  color: #ffffff;
+}
+
+html[data-theme="dark"] .account-profile {
+  background: #242424;
+  border: 1px solid #333;
+}
+
+html[data-theme="dark"] .account-profile > span {
+  background: #e91e8c;
+  color: #fff;
+}
+
+html[data-theme="dark"] .account-profile b {
+  color: #ffffff;
+}
+
+html[data-theme="dark"] .admin-button {
+  background: #242424;
+  border: 1px solid #4a4a4a;
+  color: #ffffff;
+}
+
+html[data-theme="dark"] .admin-button:hover {
+  background: #2e2e2e;
+  border-color: #e91e8c;
+  color: #ffffff;
+}
+
+html[data-theme="dark"] .admin-button.primary {
+  background: #e91e8c;
+  border-color: #e91e8c;
+  color: #ffffff;
+}
+
+html[data-theme="dark"] .admin-button.danger {
+  background: transparent;
+  border-color: #ff6b8a;
+  color: #ff8da1;
+}
+
+html[data-theme="dark"] .form-actions > button:not(.admin-button),
+html[data-theme="dark"] .admin-title button:not(.admin-button) {
+  background: #242424;
+  border: 1px solid #4a4a4a;
+  color: #ffffff;
+}
+
+html[data-theme="dark"] .password-form input,
+html[data-theme="dark"] .secret-field input,
+html[data-theme="dark"] .payments-settings input,
+html[data-theme="dark"] .stack-form input,
+html[data-theme="dark"] .stack-form select,
+html[data-theme="dark"] .stack-form textarea {
+  background: #121212;
+  border-color: #3a3a3a;
+  color: #ffffff;
+}
+
+html[data-theme="dark"] .reveal-key {
+  color: #f0f0f0;
+  background: transparent;
+}
+
+html[data-theme="dark"] .mode-switch {
+  background: #242424;
+  border-color: #3a3a3a;
+}
+
+html[data-theme="dark"] .mode-switch button {
+  color: #cfcfcf;
+}
+
+html[data-theme="dark"] .mode-switch button.active {
+  color: #111;
+}
+
+html[data-theme="dark"] .mode-switch button.active.live {
+  color: #ffffff;
+}
+
+html[data-theme="dark"] .payment-mode-banner.test {
+  background: #3a2f12;
+  color: #ffd789;
+  border-color: #6b5420;
+}
+
+html[data-theme="dark"] .payment-mode-banner.live {
+  background: #103528;
+  color: #9af0c6;
+  border-color: #1f6b4a;
+}
+
+html[data-theme="dark"] .store-toggle-card,
+html[data-theme="dark"] .store-settings-stack .admin-card {
+  color: #f3f3f3;
+}
+
+html[data-theme="dark"] .store-toggle {
+  background: #2a2a2a;
+  color: #fff;
+  border: 1px solid #444;
+}
+
+html[data-theme="dark"] .store-toggle.on {
+  background: #e91e8c;
+  border-color: #e91e8c;
+  color: #fff;
+}
+
+html[data-theme="dark"] .admin-menu {
+  background: #1a1a1a;
+  color: #fff;
+  border: 1px solid #333;
+}
+
+html[data-theme="dark"] .admin-brand-inline,
+html[data-theme="dark"] .admin-brand-inline span,
+html[data-theme="dark"] .admin-breadcrumbs,
+html[data-theme="dark"] .admin-breadcrumbs .current,
+html[data-theme="dark"] .admin-user strong,
+html[data-theme="dark"] .admin-user small {
+  color: #f0f0f0;
+}
+
+html[data-theme="dark"] .theme-toggle {
+  color: #f0f0f0;
+  border-color: #444;
+}
+
+html[data-theme="dark"] .media-tile {
+  background: #1f1f1f;
+  border-color: #333;
+  color: #f0f0f0;
+}
+
+html[data-theme="dark"] .media-pick,
+html[data-theme="dark"] .media-toggle {
+  color: #d0d0d0;
+}
+
+html[data-theme="dark"] .upload-area {
+  background: #1a1a1a !important;
+  border-color: #444 !important;
+  color: #f0f0f0;
+}
+
+html[data-theme="dark"] .admin-toolbar label,
+html[data-theme="dark"] .admin-toolbar input {
+  color: #f0f0f0;
+  background: #1a1a1a;
+  border-color: #333;
+}
+
+html[data-theme="dark"] .customer-cell b,
+html[data-theme="dark"] .customer-cell small,
+html[data-theme="dark"] .table-product b,
+html[data-theme="dark"] .table-product small {
+  color: #f0f0f0;
+}
+
+html[data-theme="dark"] .customer-cell small,
+html[data-theme="dark"] .table-product small {
+  color: #bdbdbd;
+}
+
+html[data-theme="dark"] .low-stock {
+  color: #ffb4c0;
+}

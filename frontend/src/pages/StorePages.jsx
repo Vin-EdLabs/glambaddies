@@ -1,12 +1,23 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
+import { Link, Navigate, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import PaystackPop from '@paystack/inline-js'
 import toast from 'react-hot-toast'
-import { ArrowLeft, ArrowRight, Check, ChevronDown, Clock3, Filter, Heart, Minus, Package, Plus, RotateCcw, ShieldCheck, ShoppingBag, Truck, X } from 'lucide-react'
+import { ArrowLeft, ArrowRight, Check, ChevronDown, Clock3, Filter, Heart, MapPin, Minus, Package, Plus, RotateCcw, ShieldCheck, ShoppingBag, Truck, X } from 'lucide-react'
 import { EmptyState, ErrorState, LoadingGrid, PasswordInput, ProductCard, CopyValue } from '../components'
+import SEO from '../components/SEO'
+import { ProductImageGallery } from '../ProductImageGallery'
 import { useAuth, useCart } from '../contexts'
 import api, { asArray, errorMessage, getProductCacheRev, mapProduct, mapProducts, syncCatalogueRevision } from '../services/api'
 import { formatCurrency } from '../utils'
+import { DRESS_COLORS, DRESS_SIZES } from '../dressOptions'
+
+const SITE_URL = String(import.meta.env.VITE_APP_URL || 'https://www.glambaddies.com').replace(/\/$/, '')
+
+function absoluteUrl(pathOrUrl) {
+  if (!pathOrUrl) return undefined
+  if (/^https?:\/\//i.test(pathOrUrl)) return pathOrUrl
+  return `${SITE_URL}${pathOrUrl.startsWith('/') ? '' : '/'}${pathOrUrl}`
+}
 
 function useApi(load, dependencies) {
   const [state, setState] = useState({ data: null, loading: true, error: null })
@@ -28,7 +39,7 @@ function useProductCacheRev() {
     const onFocus = () => {
       syncCatalogueRevision().then(sync).catch(sync)
     }
-    window.addEventListener('vub:products-changed', sync)
+    window.addEventListener('glam:products-changed', sync)
     window.addEventListener('storage', sync)
     window.addEventListener('focus', onFocus)
     document.addEventListener('visibilitychange', () => {
@@ -37,7 +48,7 @@ function useProductCacheRev() {
     onFocus()
     const timer = window.setInterval(onFocus, 30000)
     return () => {
-      window.removeEventListener('vub:products-changed', sync)
+      window.removeEventListener('glam:products-changed', sync)
       window.removeEventListener('storage', sync)
       window.removeEventListener('focus', onFocus)
       window.clearInterval(timer)
@@ -50,93 +61,72 @@ export function Home() {
   const productsRev = useProductCacheRev()
   const { data, loading, error, retry } = useApi(
     () => Promise.all([
-      api.get('/products', { params: { category: 'jewellery', limit: 4, sort: 'newest' } }),
-      api.get('/products', { params: { q: 'dress', limit: 4, sort: 'newest' } }),
-    ]).then(([jewelleryResult, dressesResult]) => {
-      if (jewelleryResult.data?.revision != null) {
-        try { localStorage.setItem('vub_products_rev', String(jewelleryResult.data.revision)) } catch { /* ignore */ }
+      api.get('/products', { params: { category: 'party-dresses', limit: 4, sort: 'newest' } }),
+      api.get('/products', { params: { category: 'casual-dresses', limit: 4, sort: 'newest' } }),
+    ]).then(([partyResult, casualResult]) => {
+      if (partyResult.data?.revision != null) {
+        try { localStorage.setItem('glam_products_rev', String(partyResult.data.revision)) } catch { /* ignore */ }
       }
       return {
-        jewellery: mapProducts(jewelleryResult.data?.products),
-        dresses: mapProducts(dressesResult.data?.products),
+        party: mapProducts(partyResult.data?.products),
+        casual: mapProducts(casualResult.data?.products),
       }
     }), [productsRev],
   )
-  const jewellery = asArray(data?.jewellery)
-  const dresses = asArray(data?.dresses)
+  const party = asArray(data?.party)
+  const casual = asArray(data?.casual)
   const edits = [
     {
-      to: '/shop?category=jewellery',
-      image: 'https://images.unsplash.com/photo-1515562141207-7a88fb7ce338?auto=format&fit=crop&w=1400&q=90',
-      eyebrow: 'Jewellery',
-      title: 'Gold & diamonds',
-      alt: 'Fine gold and diamond jewellery',
+      to: '/shop?category=casual-dresses',
+      image: '/edit-casual.jpg',
+      eyebrow: 'Casual',
+      title: 'Everyday dresses',
+      alt: 'Glamorous woman in a bold casual dress',
     },
     {
-      to: '/shop?category=flowers',
-      image: 'https://images.unsplash.com/photo-1561181286-d3fee7d55364?auto=format&fit=crop&w=1400&q=90',
-      eyebrow: 'Flowers',
-      title: 'Fresh bouquets',
-      alt: 'Hand-tied rose bouquet',
+      to: '/shop?category=party-dresses',
+      image: '/edit-party.jpg',
+      eyebrow: 'Party',
+      title: 'Celebration looks',
+      alt: 'Sexy evening party dress look',
     },
     {
-      to: '/shop?category=fashion',
-      image: 'https://images.unsplash.com/photo-1617137968427-85924c800a22?auto=format&fit=crop&w=1400&q=90',
-      eyebrow: 'Fashion',
-      title: 'The men’s edit',
-      alt: 'Menswear styled on a rack',
+      to: '/shop?category=school-dresses',
+      image: '/edit-school.jpg',
+      eyebrow: 'School',
+      title: 'Smart day dresses',
+      alt: 'Stylish smart day dress look',
     },
     {
-      to: '/shop?category=electronics',
-      image: 'https://images.unsplash.com/photo-1505740420928-5e560c06d30e?auto=format&fit=crop&w=1400&q=90',
-      eyebrow: 'Electronics',
-      title: 'Modern essentials',
-      alt: 'Premium wireless headphones',
-    },
-    {
-      to: '/shop?category=games',
-      image: 'https://images.unsplash.com/photo-1606144042614-b2417e99c4e3?auto=format&fit=crop&w=1400&q=90',
-      eyebrow: 'Games',
-      title: 'Play in focus',
-      alt: 'Gaming console and controller',
-    },
-    {
-      to: '/shop?category=home-living',
-      image: 'https://images.unsplash.com/photo-1586023492125-27b2c045efd7?auto=format&fit=crop&w=1400&q=90',
-      eyebrow: 'Home & Living',
-      title: 'Quiet interiors',
-      alt: 'Minimal living room interior',
-    },
-    {
-      to: '/shop?category=food',
-      image: 'https://images.unsplash.com/photo-1610832958506-aa56368176cf?auto=format&fit=crop&w=1400&q=90',
-      eyebrow: 'Food & Grocery',
-      title: 'Fresh from the market',
-      alt: 'Fresh fruit and grocery produce',
-    },
-    {
-      to: '/shop?category=beauty',
-      image: 'https://images.unsplash.com/photo-1596462502278-27bfdc403348?auto=format&fit=crop&w=1400&q=90',
-      eyebrow: 'Beauty',
-      title: 'Daily rituals',
-      alt: 'Beauty and skincare essentials',
+      to: '/shop?category=dresses',
+      image: '/edit-all.jpg',
+      eyebrow: 'All dresses',
+      title: 'Shop the latest girls\' dresses',
+      alt: 'Hot fashion dress editorial',
     },
   ]
   return <>
-    <section className="hero-section">
-      <img src="/hero.jpg" alt="Vublishop premium edit — fashion, bags and games" />
-      <div className="hero-copy">
-        <img className="hero-brand" src="/logo.png" alt="Vublishop" />
-        <h1>Shop better.<br /><em>Live better.</em></h1>
-        <p>Premium fashion, electronics, games, home, beauty and fresh food — curated for the way you live.</p>
-        <Link className="button light-button" to="/shop">Discover the collection <ArrowRight /></Link>
+    <SEO
+      title="Girls Dresses in Ghana"
+      description="Shop the latest girls dresses at GlamBaddies. Casual, party, and school dresses delivered across Ghana."
+      url={`${SITE_URL}/`}
+    />
+    <section className="hero-band" aria-label="GlamBaddies hero">
+      <div className="hero-section">
+        <img src="/hero.png" alt="GlamBaddies GH — Look good. Stay glam." />
+        <div className="hero-copy">
+          <img className="hero-brand" src="/logo.png" alt="GlamBaddies — Shop. Slay. Shine." />
+          <h1>Shop. Slay.<br /><em>Shine.</em></h1>
+          <p>Girls&apos; dresses only — bold, glamorous looks made to turn heads.</p>
+          <Link className="button light-button" to="/shop">Shop the latest girls&apos; dresses <ArrowRight /></Link>
+        </div>
       </div>
     </section>
-    <section className="section"><div className="section-head"><div><span className="eyebrow">Fine jewellery</span><h2>Gold & diamonds</h2></div><Link to="/shop?category=jewellery">View all <ArrowRight /></Link></div>{loading ? <LoadingGrid /> : error ? <ErrorState retry={retry} /> : jewellery.length ? <div className="product-grid">{jewellery.map((product) => <ProductCard product={product} key={product.id} />)}</div> : <EmptyState title="New pieces coming soon" text="Our next edit is being prepared." action="Browse the collection" to="/shop?category=jewellery" />}</section>
-    <section className="section"><div className="section-head"><div><span className="eyebrow">The dress edit</span><h2>Dresses to love</h2></div><Link to="/shop?q=dress">View all <ArrowRight /></Link></div>{loading ? <LoadingGrid /> : error ? <ErrorState retry={retry} /> : dresses.length ? <div className="product-grid">{dresses.map((product) => <ProductCard product={product} key={product.id} />)}</div> : <EmptyState title="New dresses coming soon" text="Our next edit is being prepared." action="Browse the collection" to="/shop" />}</section>
+    <section className="section"><div className="section-head"><div><span className="eyebrow">Party edit</span><h2>Dresses for celebrating</h2></div><Link to="/shop?category=party-dresses">View all <ArrowRight /></Link></div>{loading ? <LoadingGrid /> : error ? <ErrorState retry={retry} /> : party.length ? <div className="product-grid">{party.map((product) => <ProductCard product={product} key={product.id} />)}</div> : <EmptyState title="New party dresses coming soon" text="Our next edit is being prepared." action="Browse all dresses" to="/shop" />}</section>
+    <section className="section"><div className="section-head"><div><span className="eyebrow">Everyday glam</span><h2>Casual dresses</h2></div><Link to="/shop?category=casual-dresses">View all <ArrowRight /></Link></div>{loading ? <LoadingGrid /> : error ? <ErrorState retry={retry} /> : casual.length ? <div className="product-grid">{casual.map((product) => <ProductCard product={product} key={product.id} />)}</div> : <EmptyState title="New casual dresses coming soon" text="Our next edit is being prepared." action="Browse all dresses" to="/shop" />}</section>
     <section className="editorial-grid">{edits.map((edit) => <Link to={edit.to} key={edit.to}><img src={edit.image} alt={edit.alt} /><div><span className="eyebrow">{edit.eyebrow}</span><h2>{edit.title}</h2><span>Shop now <ArrowRight /></span></div></Link>)}</section>
-    <section className="manifesto"><span className="eyebrow">Our point of view</span><h2>Buy less. Choose beautifully.<br />Wear it your way.</h2><p>We bring together independent voices and enduring design, selected for quality, character and relevance beyond a single season.</p><Link to="/about">Discover Vublishop <ArrowRight /></Link></section>
-    <section className="benefits"><div><Truck /><h3>Complimentary delivery</h3><p>On orders over $50</p></div><div><RotateCcw /><h3>Considered returns</h3><p>Easy returns within 14 days</p></div><div><ShieldCheck /><h3>Secure payment</h3><p>Protected checkout with Paystack</p></div></section>
+    <section className="manifesto"><span className="eyebrow">Shop · Slay · Shine</span><h2>Little dresses.<br />Big energy.</h2><p>GlamBaddies is a girls&apos; fashion boutique devoted only to dresses — bold cuts, soft glam, and looks that turn heads.</p><Link to="/about">Discover GlamBaddies <ArrowRight /></Link></section>
+    <section className="benefits"><div><Truck /><h3>Complimentary delivery</h3><p>On orders over GHS 500</p></div><div><RotateCcw /><h3>Considered returns</h3><p>Easy returns within 14 days</p></div><div><ShieldCheck /><h3>Secure payment</h3><p>Protected checkout with Paystack (GHS)</p></div></section>
   </>
 }
 
@@ -154,7 +144,7 @@ export function Shop() {
       api.get('/categories'),
     ]).then(([productsResult, categoriesResult]) => {
       if (productsResult.data?.revision != null) {
-        try { localStorage.setItem('vub_products_rev', String(productsResult.data.revision)) } catch { /* ignore */ }
+        try { localStorage.setItem('glam_products_rev', String(productsResult.data.revision)) } catch { /* ignore */ }
       }
       return {
         products: mapProducts(productsResult.data?.products),
@@ -167,7 +157,13 @@ export function Shop() {
   const products = asArray(data?.products)
   const categories = asArray(data?.categories)
   const title = categories.find((item) => item.slug === category)?.name || (query ? `Results for “${query}”` : 'Shop all')
-  return <div className="shop-page"><div className="page-title"><span className="eyebrow">The collection</span><h1>{title}</h1><p>A considered wardrobe of directional essentials and enduring statements.</p></div>
+  return <div className="shop-page">
+    <SEO
+      title="Shop All Dresses"
+      description="Browse casual, party, and school dresses at GlamBaddies — girls' fashion delivered across Ghana."
+      url={`${SITE_URL}/shop`}
+    />
+    <div className="page-title"><span className="eyebrow">The collection</span><h1>{title}</h1><p>Shop the latest girls&apos; dresses — curated for every occasion.</p></div>
     <div className="catalog-toolbar"><button onClick={() => setMobileFilters(true)}><Filter /> Filters</button><span>{data?.pagination?.total || 0} pieces</span><label>Sort by <select value={sort} onChange={(event) => setSort(event.target.value)}><option value="newest">Featured</option><option value="price_asc">Price: low to high</option><option value="price_desc">Price: high to low</option><option value="name_asc">Name</option></select><ChevronDown /></label></div>
     <div className="catalog"><aside className={mobileFilters ? 'open' : ''}><button className="filter-close" onClick={() => setMobileFilters(false)}><X /></button><FilterGroup title="Category" values={categories} active={category} /></aside>
       {loading ? <LoadingGrid /> : error ? <ErrorState retry={retry} /> : products.length ? <div className="product-grid">{products.map((product) => <ProductCard product={product} key={product.id} />)}</div> : <EmptyState title="No pieces found" text="Try changing your filters or search phrase." action="View all products" to="/shop" />}</div>
@@ -182,15 +178,83 @@ export function ProductDetail() {
   const { id } = useParams()
   const { addItem } = useCart()
   const [size, setSize] = useState('')
+  const [color, setColor] = useState('')
   const productsRev = useProductCacheRev()
-  const { data: product, loading, error, retry } = useApi(() => api.get(`/products/${id}`).then(({ data }) => mapProduct(data?.product)), [id, productsRev])
+  const { data: product, loading, error, retry } = useApi(
+    () => api.get(`/products/${id}`).then(({ data }) => mapProduct(data?.product)),
+    [id, productsRev],
+  )
+
+  useEffect(() => {
+    setSize('')
+    setColor('')
+  }, [id])
+
   if (loading) return <div className="section"><LoadingGrid /></div>
-  if (error?.status === 404) return <EmptyState title="Piece not found" text="This item may no longer be available." action="Continue shopping" to="/shop" />
+  if (error?.status === 404) {
+    return (
+      <>
+        <SEO title="Page Not Found" noindex />
+        <EmptyState title="Piece not found" text="This item may no longer be available." action="Continue shopping" to="/shop" />
+      </>
+    )
+  }
   if (error) return <ErrorState retry={retry} />
   const images = asArray(product?.images).length ? asArray(product.images) : [product?.image].filter(Boolean)
-  const sizes = asArray(product?.sizes)
-  const add = () => sizes.length && !size ? toast.error('Please select a size') : addItem(product, size || undefined)
-  return <div className="product-detail"><div className="product-gallery">{images.map((image, index) => <img src={image} alt={`${product.name} view ${index + 1}`} key={`${image}-${index}`} />)}</div><div className="product-summary"><span className="eyebrow">{product.brand || product.category}</span><h1>{product.name}</h1><div className="detail-price">{formatCurrency(product.price)}</div><p>{product.description}</p>{sizes.length > 0 && <><div className="size-head"><strong>Select size</strong><button>Size guide</button></div><div className="size-grid">{sizes.map((item) => <button className={size === item ? 'selected' : ''} onClick={() => setSize(item)} key={item}>{item}</button>)}</div></>}<button className="button full" disabled={!product.stock} onClick={add}>{product.stock ? 'Add to bag' : 'Sold out'} <ShoppingBag /></button><button className="wishlist"><Heart /> Add to wishlist</button><details open><summary>Details & composition <Plus /></summary><p>{product.description || 'Thoughtfully made from premium materials.'}</p></details><details><summary>Delivery & returns <Plus /></summary><p>International delivery times vary by destination. Returns are accepted within 14 days.</p></details></div></div>
+  const productPath = `/products/${product.slug || product.id}`
+  const add = () => {
+    if (!color) return toast.error('Please select a colour')
+    if (!size) return toast.error('Please select a size')
+    addItem(product, { size, color })
+  }
+  return (
+    <div className="product-detail">
+      <SEO
+        title={product.name}
+        description={product.description || `${product.name} — girls' dress at GlamBaddies.`}
+        image={absoluteUrl(product.image)}
+        url={`${SITE_URL}${productPath}`}
+        type="product"
+      />
+      <ProductImageGallery images={images} alt={product.name} />
+      <div className="product-summary">
+        <span className="eyebrow">{product.brand || product.category}</span>
+        <h1>{product.name}</h1>
+        <div className="detail-price">{formatCurrency(product.price)}</div>
+        <p>{product.description}</p>
+        <div className="option-block">
+          <div className="size-head"><strong>Colour</strong><span>{color || 'Select'}</span></div>
+          <div className="color-swatches" role="listbox" aria-label="Colour">
+            {DRESS_COLORS.map((item) => (
+              <button
+                type="button"
+                key={item.name}
+                title={item.name}
+                className={`color-swatch${item.pattern ? ' leopard' : ''}${color === item.name ? ' selected' : ''}`}
+                style={{ '--swatch': item.value }}
+                aria-label={item.name}
+                aria-selected={color === item.name}
+                onClick={() => setColor(item.name)}
+              />
+            ))}
+          </div>
+        </div>
+        <div className="option-block">
+          <div className="size-head"><strong>Size</strong><button type="button">Size guide</button></div>
+          <div className="size-grid">
+            {DRESS_SIZES.map((item) => (
+              <button type="button" className={size === item ? 'selected' : ''} onClick={() => setSize(item)} key={item}>{item}</button>
+            ))}
+          </div>
+        </div>
+        <button className="button full" disabled={!product.stock} onClick={add}>{product.stock ? 'Add to bag' : 'Sold out'} <ShoppingBag /></button>
+        <button className="wishlist" type="button"><Heart /> Add to wishlist</button>
+        <details open><summary>Details & composition <Plus /></summary><p>{product.description || 'Thoughtfully made from premium materials.'}</p></details>
+        <details><summary>Delivery & returns <Plus /></summary><p>Choose pickup or delivery at checkout. Returns accepted within 14 days.</p></details>
+        <details open><summary>Track your order <Plus /></summary><p>Use the phone number from checkout anytime on the <Link to="/track-order">Track order</Link> page — no sign-in needed.</p></details>
+      </div>
+    </div>
+  )
 }
 
 /** Amount + currency from /payment/prepare (GHS pesewas for Ghana Paystack). */
@@ -216,6 +280,7 @@ export function Checkout() {
   const [checkoutToken, setCheckoutToken] = useState('')
   const [purchasesEnabled, setPurchasesEnabled] = useState(true)
   const [applePayReady, setApplePayReady] = useState(false)
+  const [fulfillment, setFulfillment] = useState('delivery')
   const shipping = 0
 
   useEffect(() => {
@@ -228,7 +293,7 @@ export function Checkout() {
       })
   }, [])
 
-  // On Apple devices, mount Paystack Apple Pay (USD) once the form is valid.
+  // On Apple devices, mount Paystack Apple Pay (GHS) once the form is valid.
   useEffect(() => {
     const form = checkoutFormRef.current
     if (!form) return undefined
@@ -255,7 +320,7 @@ export function Checkout() {
       form.removeEventListener('change', tryMount)
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [items.length, purchasesEnabled, submitting])
+  }, [items.length, purchasesEnabled, submitting, fulfillment])
 
   const payHeaders = (token) => (token ? { Authorization: `Bearer ${token}` } : undefined)
 
@@ -266,22 +331,49 @@ export function Checkout() {
     if (appleHost) appleHost.replaceChildren()
   }
 
+  useEffect(() => {
+    setPendingOrder(null)
+    setCheckoutToken('')
+    clearApplePayUi()
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fulfillment])
+
   const ensureOrder = async (form) => {
     let order = pendingOrder
     let token = checkoutToken
     if (!order || !token) {
       const fields = Object.fromEntries(new FormData(form))
+      fields.fulfillment_method = fulfillment
+      fields.full_name = fields.full_name || fields.name
+      fields.location = fields.location || ''
+      fields.additional_note = fields.additional_note || ''
+      fields.location_note = fields.additional_note
       const result = await api.post('/orders/guest', {
-        shipping_address: fields,
+        shipping_address: {
+          ...fields,
+          bag_items: items.map((item) => ({
+            product_id: Number(item.id),
+            name: item.name,
+            size: item.size || null,
+            color: item.color || null,
+            quantity: item.quantity,
+            price: item.price,
+          })),
+        },
         items: items.map((item) => ({
           product_id: Number(item.id),
           quantity: item.quantity,
+          size: item.size,
+          color: item.color,
         })),
       })
       order = result.data.order
       token = result.data.checkout_token
       setPendingOrder(order)
       setCheckoutToken(token)
+      try {
+        if (fields.phone) sessionStorage.setItem('glam_track_phone', String(fields.phone).trim())
+      } catch { /* ignore */ }
     }
     return { order, token }
   }
@@ -292,14 +384,24 @@ export function Checkout() {
       { headers: payHeaders(token) },
     )
     if (!data.verified) throw new Error('Payment could not be verified')
+    const phone =
+      pendingOrder?.shipping_address?.phone ||
+      (() => {
+        try { return sessionStorage.getItem('glam_track_phone') || '' } catch { return '' }
+      })()
     clearCart()
     setCheckoutToken('')
     setPendingOrder(null)
     paymentMethodRef.current = null
-    navigate(`/order-confirmation?order=${data.order_id}&reference=${encodeURIComponent(reference)}`)
+    const qs = new URLSearchParams({
+      order: String(data.order_id || ''),
+      reference: String(reference || ''),
+    })
+    if (phone) qs.set('phone', phone)
+    navigate(`/order-confirmation?${qs.toString()}`)
   }
 
-  /** Apple Pay only: /payment/prepare → paymentRequest with backend USD cents. */
+  /** Apple Pay only: /payment/prepare → paymentRequest with backend GHS pesewas. */
   const mountApplePay = async (form) => {
     if (applePayMountedRef.current || paymentMethodRef.current === 'paystack' || submitting) return
     const canApple = Boolean(
@@ -425,9 +527,17 @@ export function Checkout() {
     }
   }
 
-  if (!items.length) return <EmptyState title="Your bag is empty" text="Add a piece before starting checkout." action="Return to shop" to="/shop" />
+  if (!items.length) {
+    return (
+      <>
+        <SEO title="Checkout" noindex />
+        <EmptyState title="Your bag is empty" text="Add a piece before starting checkout." action="Return to shop" to="/shop" />
+      </>
+    )
+  }
   return (
     <div className="checkout-page">
+      <SEO title="Checkout" noindex />
       <form ref={checkoutFormRef} onSubmit={startCheckout}>
         <Link to="/shop"><ArrowLeft /> Continue shopping</Link>
         <h1>Checkout</h1>
@@ -442,30 +552,39 @@ export function Checkout() {
           </div>
         )}
         <fieldset>
-          <legend>Contact</legend>
-          <label>email address<input name="email" type="email" required defaultValue={customer?.email || ''} autoComplete="email" /></label>
-        </fieldset>
-        <fieldset>
-          <legend>Delivery address</legend>
+          <legend>Your details</legend>
           <div className="form-grid">
-            <label>First name<input name="first_name" required autoComplete="given-name" /></label>
-            <label>Last name<input name="last_name" required autoComplete="family-name" /></label>
-            <label className="span-2">Street address<input name="street" required autoComplete="street-address" /></label>
-            <label>City<input name="city" required autoComplete="address-level2" /></label>
-            <label>State / Province<input name="state" autoComplete="address-level1" /></label>
-            <label className="span-2">Country<input name="country" required autoComplete="country-name" /></label>
-            <label>Phone number<input name="phone" type="tel" required autoComplete="tel" /></label>
-            <label>Postal / ZIP code<input name="postal_code" autoComplete="postal-code" /></label>
+            <label className="span-2">Full name<input name="full_name" required autoComplete="name" placeholder="e.g. Ama Mensah" defaultValue={customer?.name || ''} /></label>
+            <label>Phone number<input name="phone" type="tel" required autoComplete="tel" placeholder="e.g. 0241234567" defaultValue={customer?.phone || ''} /></label>
+            <label>
+              Email
+              <input
+                name="email"
+                type="email"
+                autoComplete="email"
+                required
+                placeholder="Required for receipts & order updates"
+                defaultValue={customer?.email || ''}
+              />
+            </label>
+            <label className="span-2">Location<input name="location" required autoComplete="street-address" placeholder="Area, landmark, or pickup point" /></label>
+            <label className="span-2">Additional note <small>(optional)</small><input name="additional_note" placeholder="Anything else we should know" /></label>
           </div>
         </fieldset>
         <fieldset>
-          <legend>Delivery method</legend>
-          <label className="delivery-option">
-            <input type="radio" checked readOnly />
-            <Truck />
-            <span><strong>Standard delivery</strong><small>1–3 working days</small></span>
-            <b>{shipping ? formatCurrency(shipping) : 'Complimentary'}</b>
-          </label>
+          <legend>How should we get it to you?</legend>
+          <div className="fulfillment-options">
+            <label className={`fulfillment-card${fulfillment === 'delivery' ? ' selected' : ''}`}>
+              <input type="radio" name="fulfillment_method" value="delivery" checked={fulfillment === 'delivery'} onChange={() => setFulfillment('delivery')} />
+              <Truck />
+              <span><strong>Delivery</strong><small>We bring it to you</small></span>
+            </label>
+            <label className={`fulfillment-card${fulfillment === 'pickup' ? ' selected' : ''}`}>
+              <input type="radio" name="fulfillment_method" value="pickup" checked={fulfillment === 'pickup'} onChange={() => setFulfillment('pickup')} />
+              <MapPin />
+              <span><strong>Pickup</strong><small>Collect in store</small></span>
+            </label>
+          </div>
         </fieldset>
 
         <div className="checkout-pay-actions">
@@ -487,47 +606,98 @@ export function Checkout() {
 }
 
 function OrderSummary({ items, subtotal, shipping }) {
-  return <aside className="order-summary"><h2>Your order</h2>{items.map((item) => <div className="summary-item" key={item.key}><div><img src={item.image} alt="" /><span>{item.quantity}</span></div><p><strong>{item.name}</strong>{item.size && <small>Size {item.size}</small>}</p><b>{formatCurrency(item.price * item.quantity)}</b></div>)}<div className="summary-lines"><p><span>Subtotal</span><b>{formatCurrency(subtotal)}</b></p><p><span>Delivery</span><b>{shipping ? formatCurrency(shipping) : 'Complimentary'}</b></p><p className="grand-total"><span>Total</span><b>{formatCurrency(subtotal + shipping)}</b></p></div></aside>
+  return <aside className="order-summary"><h2>Your order</h2>{items.map((item) => <div className="summary-item" key={item.key}><div><img src={item.image} alt="" /><span>{item.quantity}</span></div><p><strong>{item.name}</strong>{(item.color || item.size) && <small>{[item.color, item.size && `Size ${item.size}`].filter(Boolean).join(' · ')}</small>}</p><b>{formatCurrency(item.price * item.quantity)}</b></div>)}<div className="summary-lines"><p><span>Subtotal</span><b>{formatCurrency(subtotal)}</b></p><p><span>Delivery</span><b>{shipping ? formatCurrency(shipping) : 'Complimentary'}</b></p><p className="grand-total"><span>Total</span><b>{formatCurrency(subtotal + shipping)}</b></p></div></aside>
 }
 
 export function OrderConfirmation() {
   const [params] = useSearchParams()
-  const reference = params.get('reference') || params.get('trxref')
-  const orderId = params.get('order')
-  if (!reference) return <EmptyState title="No confirmed order" text="A verified payment is required before an order is confirmed." action="View your account" to="/account" />
-  return <div className="confirmation"><div className="success-mark"><Check /></div><span className="eyebrow">Order confirmed</span><h1>Thank you for your order.</h1><p>We’re preparing your pieces now. Save your payment reference — you’ll need it to track delivery anytime, no sign-in required.</p><div className="confirmation-card"><span>Order ID</span><CopyValue value={orderId || '—'} label="Copy order ID" /><span>Payment reference</span><CopyValue value={reference} label="Copy payment reference" /></div><div><Link className="button" to={`/track-order?reference=${encodeURIComponent(reference)}`}>Track your order</Link><Link className="text-link" to="/shop">Continue shopping</Link></div></div>
+  const phone =
+    params.get('phone') ||
+    (() => {
+      try { return sessionStorage.getItem('glam_track_phone') || '' } catch { return '' }
+    })()
+  if (!params.get('reference') && !params.get('trxref') && !params.get('order') && !phone) {
+    return (
+      <>
+        <SEO title="Order Confirmed" noindex />
+        <EmptyState title="No confirmed order" text="A verified payment is required before an order is confirmed." action="View your account" to="/account" />
+      </>
+    )
+  }
+  const trackTo = phone
+    ? `/track-order?phone=${encodeURIComponent(phone)}`
+    : '/track-order'
+  return (
+    <div className="confirmation">
+      <SEO title="Order Confirmed" noindex />
+      <div className="success-mark"><Check /></div>
+      <span className="eyebrow">Order confirmed</span>
+      <h1>Thank you for your order.</h1>
+      <p>We’re preparing your pieces now. Use your phone number to track delivery anytime — no sign-in required.</p>
+      <div className="confirmation-card confirmation-card--phone">
+        <span>Tracking phone</span>
+        <CopyValue value={phone || '—'} label="Copy phone number" />
+      </div>
+      <div>
+        <Link className="button" to={trackTo}>Track your order</Link>
+        <Link className="text-link" to="/shop">Continue shopping</Link>
+      </div>
+    </div>
+  )
+}
+
+/** Paystack callback_url landing — forward reference query params to order confirmation. */
+export function PaymentVerify() {
+  const [params] = useSearchParams()
+  const qs = new URLSearchParams()
+  const reference = params.get('reference') || params.get('trxref') || ''
+  const order = params.get('order') || ''
+  if (reference) qs.set('reference', reference)
+  if (params.get('trxref')) qs.set('trxref', params.get('trxref'))
+  if (order) qs.set('order', order)
+  const phone = (() => {
+    try { return sessionStorage.getItem('glam_track_phone') || '' } catch { return '' }
+  })()
+  if (phone) qs.set('phone', phone)
+  const target = qs.toString() ? `/order-confirmation?${qs.toString()}` : '/order-confirmation'
+  return (
+    <>
+      <SEO title="Verifying Payment" noindex />
+      <Navigate to={target} replace />
+    </>
+  )
 }
 
 const statusStep = { pending: 1, paid: 2, shipped: 3, delivered: 4, cancelled: 0 }
 export function TrackOrder() {
   const [params] = useSearchParams()
-  const [query, setQuery] = useState(() => params.get('reference') || '')
-  const [order, setOrder] = useState(null)
+  const [query, setQuery] = useState(() => params.get('phone') || '')
+  const [orders, setOrders] = useState([])
   const [lookupError, setLookupError] = useState('')
   const [lookingUp, setLookingUp] = useState(false)
 
-  const lookup = async (reference) => {
-    const value = String(reference || '').trim()
+  const lookup = async (phone) => {
+    const value = String(phone || '').trim()
     if (!value) {
-      setLookupError('Enter your payment reference to track an order.')
-      setOrder(null)
+      setLookupError('Enter the phone number used at checkout.')
+      setOrders([])
       return
     }
     setLookingUp(true)
     setLookupError('')
     try {
-      const { data } = await api.get(`/orders/track/${encodeURIComponent(value)}`)
-      setOrder(data.order)
+      const { data } = await api.get('/orders/track', { params: { phone: value } })
+      setOrders(asArray(data?.orders).length ? asArray(data.orders) : (data?.order ? [data.order] : []))
     } catch (error) {
-      setOrder(null)
-      setLookupError(errorMessage(error, 'No order found for that payment reference.'))
+      setOrders([])
+      setLookupError(errorMessage(error, 'No orders found for that phone number.'))
     } finally {
       setLookingUp(false)
     }
   }
 
   useEffect(() => {
-    const preset = params.get('reference')
+    const preset = params.get('phone')
     if (preset) lookup(preset)
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [params])
@@ -537,22 +707,26 @@ export function TrackOrder() {
     lookup(query)
   }
 
-  const step = statusStep[order?.status] || 0
   return (
     <div className="narrow-page">
+      <SEO
+        title="Track Your Order"
+        description="Track your GlamBaddies order with the phone number used at checkout."
+        url={`${SITE_URL}/track-order`}
+      />
       <span className="eyebrow">Client services</span>
       <h1>Track your order</h1>
-      <p>Enter the payment reference from your confirmation email or receipt. No account sign-in needed.</p>
+      <p>Enter the phone number you used at checkout. No account sign-in needed.</p>
       <form className="stack-form" onSubmit={submit}>
         <label>
-          Payment reference
+          Phone number
           <input
             required
+            type="tel"
             value={query}
             onChange={(event) => setQuery(event.target.value)}
-            placeholder="e.g. VUB-12-a1b2c3d4"
-            autoComplete="off"
-            spellCheck={false}
+            placeholder="e.g. 0241234567"
+            autoComplete="tel"
           />
         </label>
         <button className="button" disabled={lookingUp}>
@@ -560,34 +734,73 @@ export function TrackOrder() {
         </button>
       </form>
       {lookupError && <p className="track-error">{lookupError}</p>}
-      {order && (
-        <div className="tracking-result">
-          <div>
-            <Package />
-            <span>
-              <small>Payment reference</small>
-              <strong>{order.payment_reference}</strong>
-            </span>
-            <b className={`status ${order.status}`}>{order.status}</b>
-          </div>
-          <div className="timeline">
-            {[Check, Package, Truck, Check].map((Icon, index) => (
-              <span className={step > index + 1 ? 'done' : step === index + 1 ? 'active' : ''} key={index}>
-                <Icon />
+      {orders.map((order) => {
+        const step = statusStep[order?.status] || 0
+        return (
+          <div className="tracking-result" key={order.id}>
+            <div className="tracking-result__head">
+              <Package />
+              <span>
+                <small>Phone</small>
+                <strong className="tracking-phone">{order.phone || query}</strong>
               </span>
-            ))}
-          </div>
-          <div className="timeline-labels">
-            <b>Confirmed</b>
-            <b>Paid</b>
-            <b>Shipped</b>
-            <b>Delivered</b>
+              <b className={`status ${order.status}`}>{order.status}</b>
+            </div>
+            <div className="timeline">
+              {[Check, Package, Truck, Check].map((Icon, index) => (
+                <span className={step > index + 1 ? 'done' : step === index + 1 ? 'active' : ''} key={index}>
+                  <Icon />
+                </span>
+              ))}
+            </div>
+            <div className="timeline-labels">
+              <b>Confirmed</b>
+              <b>Paid</b>
+              <b>Shipped</b>
+              <b>Delivered</b>
+            </div>
+            <div className="track-meta">
+              <p>
+                <small>Fulfillment</small>
+                <strong>{order.fulfillment_method === 'pickup' ? 'Pickup' : 'Delivery'}</strong>
+              </p>
+              {order.full_name && (
+                <p>
+                  <small>Name</small>
+                  <strong>{order.full_name}</strong>
+                </p>
+              )}
+              {order.location && (
+                <p>
+                  <small>Location</small>
+                  <strong>{order.location}</strong>
+                </p>
+              )}
+            {order.additional_note && (
+              <p>
+                <small>Additional note</small>
+                <strong>{order.additional_note}</strong>
+              </p>
+            )}
+            {order.status === 'cancelled' && order.cancel_reason && (
+              <p className="track-cancel-reason">
+                <small>Cancel reason</small>
+                <strong>{order.cancel_reason}</strong>
+              </p>
+            )}
           </div>
           {order.items?.length > 0 && (
             <ul className="track-items">
               {asArray(order.items).map((item, index) => (
                 <li key={`${item.product_name}-${index}`}>
-                  <span>{item.product_name}</span>
+                  <span>
+                    {item.product_name}
+                    {(item.color || item.size) && (
+                      <small className="track-item-opts">
+                        {[item.color, item.size && `Size ${item.size}`].filter(Boolean).join(' · ')}
+                      </small>
+                    )}
+                  </span>
                   <small>×{item.quantity}</small>
                 </li>
               ))}
@@ -601,7 +814,8 @@ export function TrackOrder() {
             ? <p>This order was cancelled.</p>
             : <p><Clock3 /> Placed {new Date(order.created_at).toLocaleString()} · Status: {order.status}</p>}
         </div>
-      )}
+        )
+      })}
     </div>
   )
 }
@@ -620,19 +834,63 @@ export function Login({ register = false }) {
       const fields = Object.fromEntries(new FormData(form))
       await loginCustomer({
         name: fields.name,
-        email: fields.email,
+        phone: fields.phone,
         password: fields.password,
       }, isRegister)
       toast.success(isRegister ? 'Account created' : 'Welcome back')
       const next = params.get('next')
       navigate(next?.startsWith('/') ? next : '/account')
     } catch (error) {
-      toast.error(errorMessage(error, isRegister ? 'Could not create account' : 'Invalid email or password'))
+      toast.error(errorMessage(error, isRegister ? 'Could not create account' : 'Invalid phone or password'))
     } finally {
       setSubmitting(false)
     }
   }
-  return <div className="auth-page"><div className="auth-image"><img src="https://images.unsplash.com/photo-1537832816519-689ad163238b?auto=format&fit=crop&w=1200&q=85" alt="" /></div><form onSubmit={submit}><span className="eyebrow">Vublishop private client</span><h1>{isRegister ? 'Create an account' : 'Welcome back'}</h1><p>{isRegister ? 'Save your details and enjoy a more personal shopping experience.' : 'Sign in to view orders, saved pieces and account details.'}</p>{isRegister && <label>Full name<input name="name" required /></label>}<label>Email address<input name="email" type="email" required /></label><label>Password<PasswordInput autoComplete={isRegister ? 'new-password' : 'current-password'} /></label><button className="button full" disabled={submitting}>{submitting ? 'Please wait…' : isRegister ? 'Create account' : 'Sign in'} <ArrowRight /></button><button type="button" className="text-link" onClick={() => setIsRegister(!isRegister)}>{isRegister ? 'Already have an account? Sign in' : 'New to Vublishop? Create an account'}</button></form></div>
+  return (
+    <div className="auth-page glam-auth">
+      <SEO title={isRegister ? 'Create Account' : 'Sign In'} noindex />
+      <div className="auth-image">
+        <img src="/hero.png" alt="GlamBaddies dresses" />
+        <div className="auth-image-copy">
+          <img src="/logo.png" alt="GlamBaddies" />
+          <p>Shop · Slay · Shine</p>
+        </div>
+      </div>
+      <form onSubmit={submit}>
+        <span className="eyebrow">GlamBaddies</span>
+        <h1>{isRegister ? 'Create your account' : 'Welcome back'}</h1>
+        <p>
+          {isRegister
+            ? 'Full name, phone number and password — that’s all you need.'
+            : 'Sign in with your phone number to track orders and shop faster.'}
+        </p>
+        {isRegister && (
+          <label>
+            Full name
+            <input name="name" required autoComplete="name" placeholder="Your full name" />
+          </label>
+        )}
+        <label>
+          Phone number
+          <input name="phone" type="tel" required autoComplete="tel" placeholder="e.g. 0241234567" />
+        </label>
+        <label>
+          Password
+          <PasswordInput autoComplete={isRegister ? 'new-password' : 'current-password'} placeholder="At least 8 characters" />
+        </label>
+        <button className="button full" disabled={submitting}>
+          {submitting ? 'Please wait…' : isRegister ? 'Create account' : 'Sign in'} <ArrowRight />
+        </button>
+        <div className="auth-links">
+          <button type="button" className="text-link" onClick={() => setIsRegister(!isRegister)}>
+            {isRegister ? 'Already have an account? Sign in' : 'New here? Create an account'}
+          </button>
+          <Link className="text-link" to="/track-order">Track an order</Link>
+          <Link className="text-link" to="/shop">Continue shopping</Link>
+        </div>
+      </form>
+    </div>
+  )
 }
 
 export function Account() {
@@ -642,18 +900,60 @@ export function Account() {
   useEffect(() => { if (!customer) navigate('/login') }, [customer, navigate])
   if (!customer) return null
   const orderList = asArray(orders)
-  return <div className="account-page"><div className="page-title"><span className="eyebrow">Private client</span><h1>Good afternoon, {customer.name}.</h1></div><div className="account-grid"><aside><button className="active">Order history</button><button type="button" onClick={() => navigate('/track-order')}>Track order</button><button type="button" onClick={() => navigate('/shop')}>Continue shopping</button><button onClick={() => { logout(); navigate('/') }}>Sign out</button></aside><section><h2>Order history</h2>{loading ? <LoadingGrid /> : error ? <ErrorState retry={retry} /> : orderList.length ? orderList.map((order) => <div className="account-order" key={order.id}><div><small>Order ID</small><CopyValue value={order.payment_reference || String(order.id)} label="Copy order reference" /></div><div><small>Date</small><b>{new Date(order.created_at).toLocaleDateString()}</b></div><div><small>Total</small><b>{formatCurrency(Number(order.total ?? order.total_cents / 100))}</b></div><span className={`status ${order.status}`}>{order.status}</span><Link to={order.payment_reference ? `/track-order?reference=${encodeURIComponent(order.payment_reference)}` : '/track-order'}>Track <ArrowRight /></Link></div>) : <EmptyState title="No orders yet" text="Your order history will appear here." action="Start shopping" to="/shop" />}</section></div></div>
+  const trackPhone = customer?.phone || ''
+  return <div className="account-page"><SEO title="Your Account" noindex /><div className="page-title"><span className="eyebrow">Private client</span><h1>Good afternoon, {customer.name}.</h1></div><div className="account-grid"><aside><button className="active">Order history</button><button type="button" onClick={() => navigate(trackPhone ? `/track-order?phone=${encodeURIComponent(trackPhone)}` : '/track-order')}>Track order</button><button type="button" onClick={() => navigate('/shop')}>Continue shopping</button><button onClick={() => { logout(); navigate('/') }}>Sign out</button></aside><section><h2>Order history</h2>{loading ? <LoadingGrid /> : error ? <ErrorState retry={retry} /> : orderList.length ? orderList.map((order) => {
+    const ship = order.shipping_address || {}
+    const phone = ship.phone || trackPhone
+    return <div className="account-order" key={order.id}><div><small>Phone</small><CopyValue value={phone || '—'} label="Copy phone number" /></div><div><small>Date</small><b>{new Date(order.created_at).toLocaleDateString()}</b></div><div><small>Total</small><b>{formatCurrency(Number(order.total ?? order.total_cents / 100))}</b></div><span className={`status ${order.status}`}>{order.status}</span><Link to={phone ? `/track-order?phone=${encodeURIComponent(phone)}` : '/track-order'}>Track <ArrowRight /></Link></div>
+  }) : <EmptyState title="No orders yet" text="Your order history will appear here." action="Start shopping" to="/shop" />}</section></div></div>
 }
 
 export function About() {
-  return <div className="story-page"><section><div><span className="eyebrow">Our story</span><h1>A point of view,<br />not just a store.</h1><p>Vublishop began with a simple conviction: the things we choose should feel personal, purposeful and beautifully made.</p></div><img src="https://images.unsplash.com/photo-1445205170230-053b83016050?auto=format&fit=crop&w=1400&q=90" alt="Curated clothing rail" /></section><blockquote>“We select for the person you are becoming — never only for the season.”</blockquote><section className="reverse"><div><span className="eyebrow">Our approach</span><h2>Considered at every step.</h2><p>Our edit brings a global perspective to modern style. We value independent makers, exceptional materials and products that earn their place in your life.</p></div><img src="https://images.unsplash.com/photo-1490481651871-ab68de25d43d?auto=format&fit=crop&w=1200&q=90" alt="Minimal editorial fashion" /></section></div>
+  return (
+    <div className="story-page">
+      <SEO
+        title="About GlamBaddies"
+        description="GlamBaddies is a girls' fashion boutique devoted only to dresses — bold cuts, soft glam, and looks that turn heads."
+        url={`${SITE_URL}/about`}
+      />
+      <section><div><span className="eyebrow">Our story</span><h1>Girls&apos; fashion,<br />dresses only.</h1><p>GlamBaddies began with a simple conviction: little girls deserve dresses that feel personal, joyful and beautifully made — and nothing else cluttering the rack.</p></div><img src="https://images.unsplash.com/photo-1445205170230-053b83016050?auto=format&fit=crop&w=1400&q=90" alt="Girls dresses on a rail" /></section><blockquote>“We dress the twirl — never just the trend.”</blockquote><section className="reverse"><div><span className="eyebrow">Our approach</span><h2>Only the dresses that earn it.</h2><p>Every piece in our boutique is a girls&apos; dress — casual, party or school — chosen for comfort, quality and that extra spark of glam.</p></div><img src="https://images.unsplash.com/photo-1490481651871-ab68de25d43d?auto=format&fit=crop&w=1200&q=90" alt="Editorial girls fashion" /></section>
+    </div>
+  )
 }
 
 export function InfoPage({ type }) {
-  const content = type === 'contact' ? ['Contact us', 'Our client care team is available Monday to Saturday.', 'clientcare@vublishop.com'] : ['Frequently asked questions', 'Everything you need to know about delivery, returns and caring for your pieces.', 'How long does delivery take?']
-  return <div className="narrow-page"><span className="eyebrow">Client services</span><h1>{content[0]}</h1><p>{content[1]}</p><div className="info-card"><h3>{content[2]}</h3><p>{type === 'contact' ? 'Our team is ready to help with products, orders and delivery.' : 'Delivery times vary by destination and are confirmed during checkout.'}</p></div>{type !== 'contact' && ['What is your return policy?', 'How do I care for my purchase?', 'Can I change my order?'].map((question) => <details key={question}><summary>{question}<Plus /></summary><p>Contact client care within 14 days and we will guide you through the next step.</p></details>)}</div>
+  const content = type === 'contact'
+    ? ['Contact us', 'Our client care team is available Monday to Saturday.', 'support@glambaddies.com']
+    : ['Frequently asked questions', 'Everything you need to know about delivery, returns and caring for your dresses.', 'How long does delivery take?']
+  return (
+    <div className="narrow-page">
+      <SEO
+        title={type === 'contact' ? 'Contact Us' : 'FAQ'}
+        description={content[1]}
+        url={`${SITE_URL}/${type === 'contact' ? 'contact' : 'faq'}`}
+      />
+      <span className="eyebrow">Client services</span>
+      <h1>{content[0]}</h1>
+      <p>{content[1]}</p>
+      <div className="info-card">
+        <h3>{content[2]}</h3>
+        <p>{type === 'contact' ? 'Our team is ready to help with dresses, orders and delivery.' : 'Delivery times vary by destination and are confirmed during checkout.'}</p>
+      </div>
+      {type !== 'contact' && ['What is your return policy?', 'How do I care for my dress?', 'Can I change my order?'].map((question) => (
+        <details key={question}>
+          <summary>{question}<Plus /></summary>
+          <p>Contact client care within 14 days and we will guide you through the next step.</p>
+        </details>
+      ))}
+    </div>
+  )
 }
 
 export function NotFound() {
-  return <EmptyState title="Page not found" text="The page you’re looking for has moved or no longer exists." action="Return home" />
+  return (
+    <>
+      <SEO title="Page Not Found" noindex />
+      <EmptyState title="Page not found" text="The page you’re looking for has moved or no longer exists." action="Return home" />
+    </>
+  )
 }

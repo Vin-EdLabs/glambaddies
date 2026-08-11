@@ -1,5 +1,5 @@
--- Vublishop PostgreSQL schema
--- Usage: psql -d vublishop -f database/schema.sql
+-- GlamBaddies PostgreSQL schema
+-- Usage: psql -d glambaddies_db -f database/schema.sql
 
 BEGIN;
 
@@ -17,11 +17,16 @@ DROP TABLE IF EXISTS store_settings CASCADE;
 CREATE TABLE users (
     id            SERIAL PRIMARY KEY,
     name          VARCHAR(120)  NOT NULL,
-    email         VARCHAR(255)  NOT NULL UNIQUE,
+    phone         VARCHAR(40),
+    email         VARCHAR(255)  UNIQUE,
     password_hash VARCHAR(255)  NOT NULL,
     created_at    TIMESTAMPTZ   NOT NULL DEFAULT NOW(),
     updated_at    TIMESTAMPTZ   NOT NULL DEFAULT NOW()
 );
+
+CREATE UNIQUE INDEX users_phone_unique
+  ON users (phone)
+  WHERE phone IS NOT NULL AND phone <> '';
 
 CREATE TABLE admins (
     id            SERIAL PRIMARY KEY,
@@ -45,7 +50,7 @@ CREATE TABLE products (
     name         VARCHAR(200) NOT NULL,
     slug         VARCHAR(220) NOT NULL UNIQUE,
     description  TEXT         NOT NULL DEFAULT '',
-    -- All monetary amounts are stored as integer USD cents.
+    -- All monetary amounts are stored as integer GHS pesewas (1 GHS = 100).
     price_cents  INTEGER      NOT NULL CHECK (price_cents >= 0),
     stock        INTEGER      NOT NULL DEFAULT 0 CHECK (stock >= 0),
     is_active    BOOLEAN      NOT NULL DEFAULT TRUE,
@@ -85,7 +90,7 @@ CREATE TABLE orders (
     user_id                INTEGER      REFERENCES users(id) ON DELETE RESTRICT,
     status                 VARCHAR(20)  NOT NULL DEFAULT 'pending'
                            CHECK (status IN ('pending', 'paid', 'shipped', 'delivered', 'cancelled')),
-    currency               CHAR(3)      NOT NULL DEFAULT 'USD',
+    currency               CHAR(3)      NOT NULL DEFAULT 'GHS',
     total_cents            INTEGER      NOT NULL CHECK (total_cents >= 0),
     shipping_address       JSONB        NOT NULL DEFAULT '{}'::jsonb,
     payment_reference      VARCHAR(100) UNIQUE,
@@ -137,6 +142,7 @@ CREATE TABLE store_settings (
     paystack_live_public_key   TEXT NOT NULL DEFAULT '',
     paystack_live_secret_key   TEXT NOT NULL DEFAULT '',
     usd_to_ghs_rate            NUMERIC(12,4) NOT NULL DEFAULT 15.5,
+    announcement_text          VARCHAR(120) NOT NULL DEFAULT 'Shop · Slay · Shine',
     updated_at                 TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 

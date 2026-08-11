@@ -8,7 +8,7 @@ const { Client } = require('pg');
     port: Number(process.env.PGPORT || 5433),
     user: process.env.PGUSER || 'postgres',
     password: process.env.PGPASSWORD || 'password',
-    database: process.env.PGDATABASE || 'vublishop',
+    database: process.env.PGDATABASE || process.env.DB_NAME || 'glambaddies_db',
   });
   await c.connect();
   const sql = fs.readFileSync(

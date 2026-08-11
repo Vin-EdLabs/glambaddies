@@ -2,9 +2,9 @@ import { useEffect } from 'react'
 import { BrowserRouter, Navigate, Route, Routes, useLocation } from 'react-router-dom'
 import { Toaster } from 'react-hot-toast'
 import { AdminLayout, StoreLayout } from './components'
-import { AuthProvider, CartProvider } from './contexts'
+import { AuthProvider, CartProvider, ThemeProvider } from './contexts'
 import { ADMIN_PATH } from './adminPath'
-import { About, Account, Checkout, Home, InfoPage, Login, NotFound, OrderConfirmation, ProductDetail, Shop, TrackOrder } from './pages/StorePages'
+import { About, Account, Checkout, Home, InfoPage, Login, NotFound, OrderConfirmation, PaymentVerify, ProductDetail, Shop, TrackOrder } from './pages/StorePages'
 import { AdminCategories, AdminCustomers, AdminLogin, AdminNewsletter, AdminOrderDetail, AdminOrders, AdminProducts, AdminSettings, Analytics, Dashboard, ProductForm } from './pages/AdminPages'
 
 function SmoothScrollManager() {
@@ -27,8 +27,14 @@ function SmoothScrollManager() {
   return null
 }
 
+function LegacyAdminRedirect() {
+  const location = useLocation()
+  const rest = location.pathname.replace(/^\/vince-77-00/, '') || ''
+  return <Navigate to={`/glam-baddies${rest}${location.search}${location.hash}`} replace />
+}
+
 export default function App() {
-  return <BrowserRouter><AuthProvider><CartProvider>
+  return <BrowserRouter><ThemeProvider><AuthProvider><CartProvider>
     <SmoothScrollManager />
     <Routes>
       <Route element={<StoreLayout />}>
@@ -36,6 +42,7 @@ export default function App() {
         <Route path="shop" element={<Shop />} />
         <Route path="products/:id" element={<ProductDetail />} />
         <Route path="checkout" element={<Checkout />} />
+        <Route path="payment/verify" element={<PaymentVerify />} />
         <Route path="order-confirmation" element={<OrderConfirmation />} />
         <Route path="track-order" element={<TrackOrder />} />
         <Route path="login" element={<Login />} />
@@ -57,13 +64,17 @@ export default function App() {
         <Route path="categories" element={<AdminCategories />} />
         <Route path="customers" element={<AdminCustomers />} />
         <Route path="private-list" element={<AdminNewsletter />} />
+        <Route path="promotions" element={<AdminNewsletter />} />
         <Route path="analytics" element={<Analytics />} />
         <Route path="settings" element={<AdminSettings />} />
       </Route>
+      {/* Legacy admin URLs */}
+      <Route path="/vince-77-00/*" element={<LegacyAdminRedirect />} />
+      <Route path="/vince-77-00" element={<Navigate to={ADMIN_PATH} replace />} />
       {/* Old /admin URLs are retired — send visitors to the store. */}
       <Route path="/admin/*" element={<Navigate to="/" replace />} />
       <Route path="/admin" element={<Navigate to="/" replace />} />
     </Routes>
     <Toaster position="top-center" toastOptions={{ duration: 3000 }} />
-  </CartProvider></AuthProvider></BrowserRouter>
+  </CartProvider></AuthProvider></ThemeProvider></BrowserRouter>
 }

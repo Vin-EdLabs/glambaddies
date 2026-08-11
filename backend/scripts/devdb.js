@@ -2,8 +2,9 @@
  * Local development database.
  *
  * Boots an embedded PostgreSQL server (no system installation required),
- * creates the vublishop database on first run, and applies
+ * creates the glambaddies_db database on first run, and applies
  * database/schema.sql + database/seed.sql when the schema is missing.
+ * Separate from the main Vublishop database.
  *
  * Usage: npm run db   (keep this process running while developing)
  */
@@ -20,7 +21,7 @@ const SEED = path.join(__dirname, '..', '..', 'database', 'seed.sql');
 const PORT = 5433;
 const USER = 'postgres';
 const PASSWORD = 'password';
-const DB_NAME = 'vublishop';
+const DB_NAME = process.env.DB_NAME || 'glambaddies_db';
 
 async function main() {
   const pg = new EmbeddedPostgres({

@@ -2,10 +2,10 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link, Navigate, useNavigate, useParams } from 'react-router-dom'
 import toast from 'react-hot-toast'
 import { ArrowRight, Box, Check, DollarSign, Edit3, Eye, EyeOff, Mail, Plus, Search, ShoppingCart, Trash2, Upload, Users } from 'lucide-react'
-import { EmptyState, ErrorState, LoadingGrid, CopyValue, ConfirmDialog, PasswordInput } from '../components'
+import { EmptyState, ErrorState, LoadingGrid, CopyValue, ConfirmDialog, CancelReasonDialog, PasswordInput } from '../components'
 import { useAuth } from '../contexts'
-import api, { asArray, bustProductCache, errorMessage, mapProduct, mapProducts, resolveImageUrl } from '../services/api'
-import { formatCurrency } from '../utils'
+import api, { asArray, bustProductCache, errorMessage, mapProduct, resolveImageUrl } from '../services/api'
+import { formatCurrency, orderStatusLabel } from '../utils'
 import { ADMIN_PATH } from '../adminPath'
 
 function useAdminData(load, dependencies) {
@@ -24,7 +24,7 @@ export function AdminLogin() {
   const { admin, loginAdmin } = useAuth()
   const navigate = useNavigate()
   const [submitting, setSubmitting] = useState(false)
-  if (admin && localStorage.getItem('vub_admin_token')) return <Navigate to={ADMIN_PATH} replace />
+  if (admin && (localStorage.getItem('glam_admin_token') || localStorage.getItem('vub_admin_token'))) return <Navigate to={ADMIN_PATH} replace />
   const submit = async (event) => {
     event.preventDefault()
     const form = event.currentTarget
@@ -32,7 +32,7 @@ export function AdminLogin() {
     try {
       const fields = Object.fromEntries(new FormData(form))
       await loginAdmin({ email: fields.email, password: fields.password })
-      toast.success('Welcome to Vublishop Admin')
+      toast.success('Welcome to GlamBaddies Admin')
       navigate(ADMIN_PATH)
     } catch (error) {
       toast.error(errorMessage(error, 'Invalid email or password'))
@@ -40,7 +40,7 @@ export function AdminLogin() {
       setSubmitting(false)
     }
   }
-  return <div className="admin-login"><div className="admin-login-brand"><img src="/logo.png" alt="Vublishop" /><strong>Admin</strong></div><form onSubmit={submit}><span className="eyebrow">Store management</span><h1>Welcome back</h1><p>Sign in to manage your storefront.</p><label>Email address<input name="email" type="email" required /></label><label>Password<PasswordInput minLength={1} /></label><button className="button full" disabled={submitting}>{submitting ? 'Signing in…' : 'Sign in'} <ArrowRight /></button><small>Protected access for Vublishop staff only.</small></form></div>
+  return <div className="admin-login"><div className="admin-login-brand"><img src="/logo.png" alt="GlamBaddies" /><strong>Admin</strong></div><form onSubmit={submit}><span className="eyebrow">Store management</span><h1>Welcome back</h1><p>Sign in to manage your GlamBaddies storefront.</p><label>Email address<input name="email" type="email" required /></label><label>Password<PasswordInput minLength={1} /></label><button className="button full" disabled={submitting}>{submitting ? 'Signing in…' : 'Sign in'} <ArrowRight /></button><small>Protected access for GlamBaddies staff only.</small></form></div>
 }
 
 export function Dashboard() {
@@ -48,13 +48,13 @@ export function Dashboard() {
   const [busy, setBusy] = useState(false)
   const { data, loading, error, retry, setData } = useAdminData(
     () => Promise.all([
-      api.get('/vince-77-00/dashboard'),
-      api.get('/vince-77-00/orders', { params: { limit: 5 } }),
-      api.get('/vince-77-00/settings'),
+      api.get('/glam-baddies/dashboard'),
+      api.get('/glam-baddies/orders', { params: { limit: 5 } }).catch(() => ({ data: { orders: [] } })),
+      api.get('/glam-baddies/settings').catch(() => ({ data: { purchases_enabled: true } })),
     ]).then(([stats, orders, settings]) => ({
       stats: stats.data.stats,
       orders: asArray(orders.data?.orders),
-      purchases_enabled: settings.data.purchases_enabled,
+      purchases_enabled: settings.data.purchases_enabled !== false,
     })), [],
   )
   const togglePurchases = async () => {
@@ -62,7 +62,7 @@ export function Dashboard() {
     const previous = data
     setData({ ...data, purchases_enabled: next })
     try {
-      const { data: result } = await api.put('/vince-77-00/settings', { purchases_enabled: next })
+      const { data: result } = await api.put('/glam-baddies/settings', { purchases_enabled: next })
       toast.success(result.message || (next ? 'Purchases enabled' : 'Purchases paused'))
     } catch (toggleError) {
       setData(previous)
@@ -73,7 +73,7 @@ export function Dashboard() {
     if (!confirm?.id) return
     setBusy(true)
     try {
-      await api.post(`/vince-77-00/orders/${confirm.id}/delete`)
+      await api.post(`/glam-baddies/orders/${confirm.id}/delete`)
       toast.success('Order deleted')
       setConfirm(null)
       retry()
@@ -83,7 +83,7 @@ export function Dashboard() {
       setBusy(false)
     }
   }
-  return <AdminPage title="Overview" intro="Here’s what’s happening with your store today.">{loading ? <LoadingGrid /> : error ? <ErrorState retry={retry} /> : <>
+  return <AdminPage title="Dashboard" intro="Here’s what’s happening with GlamBaddies today.">{loading ? <LoadingGrid /> : error ? <ErrorState retry={retry} /> : <>
     <section className="admin-card store-toggle-card">
       <div>
         <h2>Store purchases</h2>
@@ -115,7 +115,12 @@ export function Dashboard() {
 }
 
 function Stats({ stats }) {
-  return <div className="stat-grid"><Stat icon={DollarSign} title="Revenue" value={formatCurrency(Number(stats.revenue_cents) / 100)} note="Paid, shipped and delivered" /><Stat icon={ShoppingCart} title="Orders" value={Number(stats.total_orders).toLocaleString()} note={`${stats.pending_orders} pending`} /><Stat icon={Users} title="Customers" value={Number(stats.total_users).toLocaleString()} note="Registered accounts" /><Stat icon={Box} title="Active products" value={Number(stats.active_products).toLocaleString()} note="Visible in storefront" /></div>
+  return <div className="stat-grid">
+    <Stat icon={ShoppingCart} title="Total Orders" value={Number(stats.total_orders).toLocaleString()} note={`${stats.pending_orders} pending`} />
+    <Stat icon={DollarSign} title="Revenue (GHS)" value={formatCurrency(Number(stats.revenue_cents) / 100)} note="Paid, shipped and delivered" />
+    <Stat icon={Box} title="Products Listed" value={Number(stats.active_products).toLocaleString()} note="Visible in storefront" />
+    <Stat icon={Users} title="Active Customers" value={Number(stats.total_users).toLocaleString()} note="Registered accounts" />
+  </div>
 }
 
 function Stat({ icon: Icon, title, value, note }) {
@@ -127,18 +132,32 @@ function AdminPage({ title, intro, action, children }) {
 }
 
 export function AdminProducts() {
+  const navigate = useNavigate()
   const [page, setPage] = useState(1)
   const [query, setQuery] = useState('')
+  const [confirm, setConfirm] = useState(null)
+  const [busy, setBusy] = useState(false)
   const { data, loading, error, retry, setData } = useAdminData(
-    () => api.get('/vince-77-00/products', { params: { page, limit: 20 } }).then(({ data }) => ({ ...data, products: mapProducts(data?.products), pagination: data?.pagination || { total: 0 } })), [page],
+    () => api.get('/glam-baddies/products', { params: { page, limit: 20, include_inactive: 1 } }).then(({ data: payload }) => ({
+      ...payload,
+      products: asArray(payload?.products).map(mapProduct),
+      pagination: payload?.pagination || { total: 0 },
+    })), [page],
   )
   const products = useMemo(() => asArray(data?.products).filter((product) => `${product.name} ${product.category}`.toLowerCase().includes(query.toLowerCase())), [data, query])
-  const remove = async (id) => {
-    if (!window.confirm('Delete this product? Products in past orders will be deactivated.')) return
-    const targetId = String(id)
+  const openProduct = (id) => navigate(`${ADMIN_PATH}/products/${id}/edit`)
+  const askDelete = (product) => setConfirm({
+    id: product.id,
+    title: `Delete ${product.name}?`,
+    message: 'This dress will be removed from your catalogue.',
+    detail: 'If it appears in past orders it will be deactivated instead of hard-deleted.',
+  })
+  const runDelete = async () => {
+    if (!confirm?.id) return
+    const targetId = String(confirm.id)
+    setBusy(true)
     try {
-      const { data: result } = await api.delete(`/vince-77-00/products/${targetId}`)
-      // Remove from local React state immediately (no page refresh needed).
+      const { data: result } = await api.delete(`/glam-baddies/products/${targetId}`)
       setData({
         ...data,
         products: asArray(data?.products).filter((product) => String(product.id) !== targetId),
@@ -149,11 +168,109 @@ export function AdminProducts() {
       })
       bustProductCache(result.revision)
       toast.success(result.deleted ? 'Product deleted' : 'Product removed from store')
+      setConfirm(null)
     } catch (deleteError) {
       toast.error(errorMessage(deleteError, 'Could not delete product'))
+    } finally {
+      setBusy(false)
     }
   }
-  return <AdminPage title="Products" intro={`${data?.pagination.total || 0} products in your catalogue`} action={<Link className="admin-button primary" to={`${ADMIN_PATH}/products/new`}><Plus /> Add product</Link>}><div className="admin-toolbar"><label><Search /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search this page..." /></label></div>{loading ? <LoadingGrid /> : error ? <ErrorState retry={retry} /> : products.length ? <section className="admin-card table-card"><div className="data-table"><table><thead><tr><th>Product</th><th>Category</th><th>Price</th><th>Stock</th><th>Status</th><th /></tr></thead><tbody>{products.map((product) => <tr key={product.id}><td><div className="table-product"><img src={product.image} alt="" /><span><b>{product.name}</b><small>#{product.id}</small></span></div></td><td>{product.category}</td><td>{formatCurrency(product.price)}</td><td><span className={product.stock < 6 ? 'low-stock' : ''}>{product.stock} units</span></td><td><span className={`status ${product.is_active ? 'active' : 'draft'}`}>{product.is_active ? 'Active' : 'Draft'}</span></td><td className="row-actions"><Link to={`${ADMIN_PATH}/products/${product.id}/edit`}><Edit3 /></Link><button onClick={() => remove(product.id)}><Trash2 /></button></td></tr>)}</tbody></table></div><Pagination page={page} total={data.pagination.total} limit={20} setPage={setPage} /></section> : <EmptyState title="No products found" text="Add a product or change your search." action="Add product" to={`${ADMIN_PATH}/products/new`} />}</AdminPage>
+  const fallbackImage = 'https://images.unsplash.com/photo-1496747611176-843222e1e57c?auto=format&fit=crop&w=400&q=80'
+  return (
+    <AdminPage
+      title="Products"
+      intro={`${data?.pagination.total || 0} dresses in your catalogue`}
+      action={<Link className="admin-button primary" to={`${ADMIN_PATH}/products/new`}><Plus /> Add New Product</Link>}
+    >
+      <div className="admin-toolbar">
+        <label><Search /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search dresses..." /></label>
+      </div>
+      {loading ? <LoadingGrid /> : error ? <ErrorState retry={retry} /> : products.length ? (
+        <section className="admin-card table-card">
+          <div className="data-table">
+            <table>
+              <thead>
+                <tr>
+                  <th>Product</th>
+                  <th>Category</th>
+                  <th>Price (GHS)</th>
+                  <th>Stock</th>
+                  <th>Status</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {products.map((product) => (
+                  <tr
+                    key={product.id}
+                    className="clickable-row"
+                    tabIndex={0}
+                    onClick={() => openProduct(product.id)}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter' || event.key === ' ') {
+                        event.preventDefault()
+                        openProduct(product.id)
+                      }
+                    }}
+                  >
+                    <td>
+                      <div className="table-product">
+                        <img
+                          src={product.image || fallbackImage}
+                          alt=""
+                          onError={(event) => {
+                            event.currentTarget.onerror = null
+                            event.currentTarget.src = fallbackImage
+                          }}
+                        />
+                        <span><b>{product.name}</b><small>#{product.id}</small></span>
+                      </div>
+                    </td>
+                    <td>{product.category}</td>
+                    <td>{formatCurrency(product.price)}</td>
+                    <td><span className={product.stock < 6 ? 'low-stock' : ''}>{product.stock} units</span></td>
+                    <td><span className={`status ${product.is_active ? 'active' : 'draft'}`}>{product.is_active ? 'Active' : 'Inactive'}</span></td>
+                    <td onClick={(event) => event.stopPropagation()}>
+                      <div className="row-actions">
+                        <Link className="table-icon" to={`${ADMIN_PATH}/products/${product.id}/edit`} aria-label={`View ${product.name}`} title="View">
+                          <Eye />
+                        </Link>
+                        <Link className="table-icon" to={`${ADMIN_PATH}/products/${product.id}/edit`} aria-label={`Edit ${product.name}`} title="Edit">
+                          <Edit3 />
+                        </Link>
+                        <button
+                          type="button"
+                          className="table-icon danger"
+                          aria-label={`Delete ${product.name}`}
+                          title="Delete"
+                          onClick={() => askDelete(product)}
+                        >
+                          <Trash2 />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <Pagination page={page} total={data.pagination.total} limit={20} setPage={setPage} />
+        </section>
+      ) : (
+        <EmptyState title="No products found" text="Add a dress or change your search." action="Add New Product" to={`${ADMIN_PATH}/products/new`} />
+      )}
+      <ConfirmDialog
+        open={Boolean(confirm)}
+        title={confirm?.title}
+        message={confirm?.message}
+        detail={confirm?.detail}
+        confirmLabel="Delete product"
+        busy={busy}
+        onCancel={() => { if (!busy) setConfirm(null) }}
+        onConfirm={runDelete}
+      />
+    </AdminPage>
+  )
 }
 
 function Pagination({ page, total, limit, setPage }) {
@@ -166,22 +283,66 @@ export function ProductForm() {
   const { id } = useParams()
   const navigate = useNavigate()
   const [files, setFiles] = useState([])
+  const [primaryNewIndex, setPrimaryNewIndex] = useState(0)
+  const [useNewAsMain, setUseNewAsMain] = useState(!id)
   const [saving, setSaving] = useState(false)
+  const [primaryBusy, setPrimaryBusy] = useState(null)
   const { data, loading, error, retry, setData } = useAdminData(
-    () => Promise.all([api.get('/categories'), id ? api.get('/vince-77-00/products', { params: { limit: 100 } }) : Promise.resolve({ data: { products: [] } })]).then(([categories, products]) => ({ categories: asArray(categories.data?.categories), product: mapProducts(products.data?.products).find((item) => String(item.id) === id) || null })), [id],
+    () => Promise.all([
+      api.get('/categories'),
+      id
+        ? api.get('/glam-baddies/products', { params: { limit: 100, include_inactive: 1 } })
+        : Promise.resolve({ data: { products: [] } }),
+    ]).then(([categories, products]) => {
+      const raw = asArray(products.data?.products).find((item) => String(item.id) === String(id)) || null
+      return {
+        categories: asArray(categories.data?.categories),
+        product: raw,
+      }
+    }),
+    [id],
   )
   const product = data?.product ? mapProduct(data.product) : null
-  const productImages = Array.isArray(data?.product?.images) ? data.product.images : []
+  const productImages = asArray(data?.product?.images).filter((image) => typeof image === 'object' && image?.url)
+
+  const syncImages = (images) => {
+    setData({ ...data, product: { ...data.product, images } })
+  }
+
   const deleteImage = async (imageId) => {
     if (!imageId) return
     try {
-      await api.delete(`/vince-77-00/products/${id}/images/${imageId}`)
-      setData({ ...data, product: { ...data.product, images: data.product.images.filter((image) => image.id !== imageId) } })
-      toast.success('Image deleted')
+      const { data: result } = await api.delete(`/glam-baddies/products/${id}/images/${imageId}`)
+      syncImages(asArray(result.images))
+      bustProductCache(result.revision)
+      toast.success('Image removed')
     } catch (imageError) {
       toast.error(errorMessage(imageError, 'Could not delete image'))
     }
   }
+
+  const setPrimary = async (imageId) => {
+    if (!imageId || !id) return
+    setPrimaryBusy(imageId)
+    try {
+      const { data: result } = await api.put(`/glam-baddies/products/${id}/images/${imageId}/primary`)
+      syncImages(asArray(result.images))
+      bustProductCache()
+      toast.success(result.message || 'Main thumbnail set')
+    } catch (primaryError) {
+      toast.error(errorMessage(primaryError, 'Could not set main thumbnail'))
+    } finally {
+      setPrimaryBusy(null)
+    }
+  }
+
+  const onPickFiles = (event) => {
+    const next = [...event.target.files]
+    setFiles(next)
+    setPrimaryNewIndex(0)
+    if (!id) setUseNewAsMain(true)
+  }
+
   const submit = async (event) => {
     event.preventDefault()
     const formElement = event.currentTarget
@@ -189,8 +350,11 @@ export function ProductForm() {
     const form = new FormData(formElement)
     form.set('is_active', form.get('is_active') === 'true' ? 'true' : 'false')
     files.forEach((file) => form.append('images', file))
+    if (files.length && (useNewAsMain || !id)) {
+      form.set('primary_image_index', String(primaryNewIndex))
+    }
     try {
-      await api({ method: id ? 'put' : 'post', url: id ? `/vince-77-00/products/${id}` : '/vince-77-00/products', data: form })
+      await api({ method: id ? 'put' : 'post', url: id ? `/glam-baddies/products/${id}` : '/glam-baddies/products', data: form })
       bustProductCache()
       toast.success(id ? 'Product updated' : 'Product created')
       navigate(`${ADMIN_PATH}/products`)
@@ -203,7 +367,132 @@ export function ProductForm() {
   if (loading) return <AdminPage title="Product"><LoadingGrid /></AdminPage>
   if (error) return <AdminPage title="Product"><ErrorState retry={retry} /></AdminPage>
   if (id && !product) return <AdminPage title="Product"><EmptyState title="Product not found" text="It may have been deleted." action="Back to products" to={`${ADMIN_PATH}/products`} /></AdminPage>
-  return <AdminPage title={product ? 'Edit product' : 'Add product'} action={<div className="form-actions"><button onClick={() => navigate(`${ADMIN_PATH}/products`)}>Cancel</button><button className="admin-button primary" form="product-form" disabled={saving}><Check /> {saving ? 'Saving…' : 'Save product'}</button></div>}><form id="product-form" className="product-form" onSubmit={submit}><div><section className="admin-card"><h2>Basic information</h2><label>Product name<input name="name" required defaultValue={product?.name} placeholder="Enter product name" /></label><label>Description<textarea name="description" rows="6" defaultValue={product?.description} placeholder="Describe the product..." /></label><label>Category<select name="category_id" defaultValue={product?.category_id || ''}><option value="">Uncategorised</option>{asArray(data?.categories).map((category) => <option value={category.id} key={category.id}>{category.name}</option>)}</select></label></section><section className="admin-card"><h2>Media</h2><label className="upload-area"><Upload /><b>Choose images to upload</b><small>PNG, JPG or WEBP. Maximum 5MB each.</small><input type="file" accept="image/png,image/jpeg,image/webp" multiple onChange={(event) => setFiles([...event.target.files])} /></label><div className="category-admin-grid">{productImages.map((image) => <div className="uploaded-image" key={image.id}><img src={resolveImageUrl(image.url)} alt="" /><button type="button" onClick={() => deleteImage(image.id)}><Trash2 /></button></div>)}{files.map((file) => <div className="uploaded-image" key={`${file.name}-${file.lastModified}`}><img src={URL.createObjectURL(file)} alt="New upload preview" /></div>)}</div></section></div><aside><section className="admin-card"><h2>Pricing</h2><label>Price (USD)<input name="price" type="number" min="0" step="0.01" required defaultValue={product?.price} /></label></section><section className="admin-card"><h2>Inventory</h2><label>Quantity<input name="stock" type="number" min="0" step="1" required defaultValue={product?.stock ?? 0} /></label></section><section className="admin-card"><h2>Status</h2><label>Product status<select name="is_active" defaultValue={String(product?.is_active ?? true)}><option value="true">Active</option><option value="false">Draft</option></select></label></section></aside></form></AdminPage>
+  const dressCategories = asArray(data?.categories).filter((category) =>
+    /dress/i.test(category.name) || /dress/i.test(category.slug)
+  )
+  const categoryOptions = dressCategories.length ? dressCategories : asArray(data?.categories)
+  const defaultCategoryId = product?.category_id
+    || categoryOptions.find((category) => category.slug === 'dresses')?.id
+    || categoryOptions[0]?.id
+    || ''
+  return (
+    <AdminPage
+      title={product ? 'Edit product' : 'Add New Product'}
+      action={(
+        <div className="form-actions">
+          <button type="button" onClick={() => navigate(`${ADMIN_PATH}/products`)}>Cancel</button>
+          <button className="admin-button primary" form="product-form" disabled={saving}>
+            <Check /> {saving ? 'Saving…' : 'Save product'}
+          </button>
+        </div>
+      )}
+    >
+      <form id="product-form" className="product-form" onSubmit={submit}>
+        <div>
+          <section className="admin-card">
+            <h2>Basic information</h2>
+            <label>Product name<input name="name" required defaultValue={product?.name} placeholder="e.g. Floral Summer Dress" /></label>
+            <label>Description<textarea name="description" rows="6" defaultValue={product?.description} placeholder="Describe the dress..." /></label>
+            <label>
+              Category
+              {categoryOptions.length <= 1
+                ? <><input type="hidden" name="category_id" value={defaultCategoryId} /><input type="text" readOnly value={categoryOptions[0]?.name || 'Dresses'} className="readonly-field" /></>
+                : <select name="category_id" defaultValue={defaultCategoryId} required>{categoryOptions.map((category) => <option value={category.id} key={category.id}>{category.name}</option>)}</select>}
+            </label>
+          </section>
+
+          <section className="admin-card media-card">
+            <div className="card-head">
+              <div>
+                <h2>Product images</h2>
+                <p>Add several angles. Choose one as the main thumbnail shoppers see first.</p>
+              </div>
+            </div>
+            <label className="upload-area">
+              <Upload />
+              <b>Add more images</b>
+              <small>PNG, JPG or WEBP · up to 12 images · max 15MB each</small>
+              <input type="file" accept="image/png,image/jpeg,image/webp,image/gif" multiple onChange={onPickFiles} />
+            </label>
+
+            {productImages.length > 0 && (
+              <div className="media-grid">
+                {productImages.map((image) => {
+                  const isPrimary = Boolean(image.is_primary)
+                  return (
+                    <div className={`media-tile${isPrimary ? ' is-primary' : ''}`} key={image.id}>
+                      <img src={resolveImageUrl(image.url)} alt="" />
+                      {isPrimary ? <span className="media-badge">Main thumb</span> : null}
+                      <div className="media-actions">
+                        {!isPrimary && (
+                          <button type="button" className="admin-button" disabled={primaryBusy === image.id} onClick={() => setPrimary(image.id)}>
+                            {primaryBusy === image.id ? 'Setting…' : 'Use as main'}
+                          </button>
+                        )}
+                        <button type="button" className="admin-button danger" onClick={() => deleteImage(image.id)} aria-label="Delete image">
+                          <Trash2 /> Remove
+                        </button>
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+
+            {files.length > 0 && (
+              <div className="media-new">
+                <h3>New uploads</h3>
+                <p className="settings-hint">These angles will be added to this dress when you save.</p>
+                {id && (
+                  <label className="media-toggle">
+                    <input
+                      type="checkbox"
+                      checked={useNewAsMain}
+                      onChange={(event) => setUseNewAsMain(event.target.checked)}
+                    />
+                    <span>Use one of these new photos as the main thumbnail</span>
+                  </label>
+                )}
+                <div className="media-grid">
+                  {files.map((file, index) => (
+                    <label className={`media-tile selectable${(useNewAsMain || !id) && primaryNewIndex === index ? ' is-primary' : ''}`} key={`${file.name}-${file.lastModified}-${index}`}>
+                      <img src={URL.createObjectURL(file)} alt={file.name} />
+                      {(useNewAsMain || !id) && primaryNewIndex === index ? <span className="media-badge">Main thumb</span> : <span className="media-badge muted">View {index + 1}</span>}
+                      {(useNewAsMain || !id) && (
+                        <>
+                          <input
+                            type="radio"
+                            name="new_primary"
+                            checked={primaryNewIndex === index}
+                            onChange={() => setPrimaryNewIndex(index)}
+                          />
+                          <span className="media-pick">{primaryNewIndex === index ? 'Selected as main' : 'Make main'}</span>
+                        </>
+                      )}
+                    </label>
+                  ))}
+                </div>
+              </div>
+            )}
+          </section>
+        </div>
+        <aside>
+          <section className="admin-card">
+            <h2>Pricing</h2>
+            <label>Price (GHS)<input name="price" type="number" min="0" step="0.01" required defaultValue={product?.price} placeholder="0.00" /></label>
+          </section>
+          <section className="admin-card">
+            <h2>Inventory</h2>
+            <label>Quantity<input name="stock" type="number" min="0" step="1" required defaultValue={product?.stock ?? 0} /></label>
+          </section>
+          <section className="admin-card">
+            <h2>Status</h2>
+            <label>Product status<select name="is_active" defaultValue={String(product?.is_active ?? true)}><option value="true">Active</option><option value="false">Inactive</option></select></label>
+          </section>
+        </aside>
+      </form>
+    </AdminPage>
+  )
 }
 
 const orderStatuses = ['pending', 'paid', 'shipped', 'delivered', 'cancelled']
@@ -212,9 +501,10 @@ export function AdminOrders() {
   const [page, setPage] = useState(1)
   const [clearing, setClearing] = useState(false)
   const [confirm, setConfirm] = useState(null)
+  const [cancelPrompt, setCancelPrompt] = useState(null)
   const [busy, setBusy] = useState(false)
   const { data, loading, error, retry, setData } = useAdminData(
-    () => api.get('/vince-77-00/orders', { params: { status: status || undefined, page, limit: 20 } })
+    () => api.get('/glam-baddies/orders', { params: { status: status || undefined, page, limit: 20 } })
       .then(({ data: result }) => ({
         ...result,
         orders: asArray(result?.orders),
@@ -222,15 +512,39 @@ export function AdminOrders() {
       })),
     [status, page],
   )
-  const updateStatus = async (id, nextStatus) => {
+  const updateStatus = async (id, nextStatus, cancelReason = '') => {
+    if (nextStatus === 'cancelled' && !cancelReason) {
+      setCancelPrompt({ id })
+      return false
+    }
     const previous = data
     setData({ ...data, orders: asArray(data?.orders).map((order) => order.id === id ? { ...order, status: nextStatus } : order) })
     try {
-      await api.put(`/vince-77-00/orders/${id}/status`, { status: nextStatus })
-      toast.success('Order status updated')
+      const { data: result } = await api.put(`/glam-baddies/orders/${id}/status`, {
+        status: nextStatus,
+        ...(nextStatus === 'cancelled' ? { cancel_reason: cancelReason } : {}),
+      })
+      if (nextStatus === 'cancelled') {
+        if (result?.email_sent) toast.success('Order cancelled — customer emailed')
+        else toast.success(`Order cancelled${result?.email_error ? ` (email not sent: ${result.email_error})` : ' — no customer email on file'}`)
+      } else {
+        toast.success(result?.email_sent ? 'Order status updated — customer emailed' : 'Order status updated')
+      }
+      return true
     } catch (updateError) {
       setData(previous)
       toast.error(errorMessage(updateError, 'Could not update order'))
+      return false
+    }
+  }
+  const confirmCancel = async (reason) => {
+    if (!cancelPrompt?.id) return
+    setBusy(true)
+    try {
+      const ok = await updateStatus(cancelPrompt.id, 'cancelled', reason)
+      if (ok) setCancelPrompt(null)
+    } finally {
+      setBusy(false)
     }
   }
   const askDelete = (id) => setConfirm({
@@ -254,7 +568,7 @@ export function AdminOrders() {
     try {
       if (confirm.type === 'all') {
         setClearing(true)
-        const { data: result } = await api.post('/vince-77-00/orders/clear')
+        const { data: result } = await api.post('/glam-baddies/orders/clear')
         toast.success(result.message || 'All orders cleared')
         setPage(1)
         setConfirm(null)
@@ -271,7 +585,7 @@ export function AdminOrders() {
           },
         })
         try {
-          await api.post(`/vince-77-00/orders/${confirm.id}/delete`)
+          await api.post(`/glam-baddies/orders/${confirm.id}/delete`)
           toast.success('Order deleted')
           setConfirm(null)
           if (!nextOrders.length && page > 1) setPage(page - 1)
@@ -291,7 +605,7 @@ export function AdminOrders() {
   const orders = asArray(data?.orders)
   const totalOrders = data?.pagination?.total || 0
   return <AdminPage title="Orders" intro="Manage and fulfil customer orders. Delete orders to remove them from dashboard revenue." action={<button type="button" className="admin-button danger" disabled={clearing || loading || !totalOrders} onClick={askClearAll}><Trash2 /> {clearing ? 'Clearing…' : 'Clear all orders'}</button>}>
-    <div className="admin-toolbar"><select value={status} onChange={(event) => { setStatus(event.target.value); setPage(1) }}><option value="">All status</option>{orderStatuses.map((item) => <option value={item} key={item}>{item}</option>)}</select></div>
+    <div className="admin-toolbar"><select value={status} onChange={(event) => { setStatus(event.target.value); setPage(1) }}><option value="">All status</option>{orderStatuses.map((item) => <option value={item} key={item}>{orderStatusLabel(item)}</option>)}</select></div>
     {loading ? <LoadingGrid /> : error ? <ErrorState retry={retry} /> : orders.length ? <section className="admin-card table-card"><OrderTable data={orders} onStatus={updateStatus} onDelete={askDelete} /><Pagination page={page} total={data.pagination.total} limit={20} setPage={setPage} /></section> : <EmptyState title="No orders found" text="Orders matching this status will appear here." />}
     <ConfirmDialog
       open={Boolean(confirm)}
@@ -303,36 +617,159 @@ export function AdminOrders() {
       onCancel={() => { if (!busy) setConfirm(null) }}
       onConfirm={runConfirm}
     />
+    <CancelReasonDialog
+      open={Boolean(cancelPrompt)}
+      orderId={cancelPrompt?.id}
+      busy={busy}
+      onCancel={() => { if (!busy) setCancelPrompt(null) }}
+      onConfirm={confirmCancel}
+    />
   </AdminPage>
 }
 
 function OrderTable({ data, onStatus, onDelete }) {
-  return <div className="data-table"><table><thead><tr><th>Order</th><th>Customer</th><th>Date</th><th>Total</th><th>Status</th><th /></tr></thead><tbody>{asArray(data).map((order) => <tr key={order.id}><td><b>#{order.id}</b></td><td><div className="customer-cell"><span>{(order.user_name || 'C').split(' ').map((item) => item[0]).join('')}</span><div><b>{order.user_name || 'Customer'}</b><small>{order.user_email}</small></div></div></td><td>{new Date(order.created_at).toLocaleDateString()}</td><td><b>{formatCurrency(Number(order.total ?? order.total_cents / 100))}</b></td><td>{onStatus ? <select className={`status ${order.status}`} value={order.status} onChange={(event) => onStatus(order.id, event.target.value)}>{orderStatuses.map((item) => <option value={item} key={item}>{item}</option>)}</select> : <span className={`status ${order.status}`}>{order.status}</span>}</td><td><div className="row-actions"><Link className="table-icon" to={`${ADMIN_PATH}/orders/${order.id}`} aria-label={`View order ${order.id}`}><Eye /></Link>{onDelete ? <button type="button" className="table-icon danger" aria-label={`Delete order ${order.id}`} onClick={() => onDelete(order.id)}><Trash2 /></button> : null}</div></td></tr>)}</tbody></table></div>
+  return (
+    <div className="data-table">
+      <table>
+        <thead>
+          <tr>
+            <th>Order ID</th>
+            <th>Customer</th>
+            <th>Method</th>
+            <th>Date</th>
+            <th>Total (GHS)</th>
+            <th>Status</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {asArray(data).map((order) => {
+            const ship = order.shipping_address || {}
+            const method = ship.fulfillment_method === 'pickup' ? 'Pickup' : 'Delivery'
+            const name = ship.full_name || order.user_name || 'Customer'
+            const contact = ship.phone || order.user_email || '—'
+            return (
+              <tr key={order.id}>
+                <td><b>#{order.id}</b></td>
+                <td>
+                  <div className="customer-cell">
+                    <span>{String(name).split(' ').map((item) => item[0]).join('').slice(0, 2)}</span>
+                    <div>
+                      <b>{name}</b>
+                      <small>{contact}</small>
+                    </div>
+                  </div>
+                </td>
+                <td>
+                  <span className={`fulfillment-pill ${ship.fulfillment_method === 'pickup' ? 'pickup' : 'delivery'}`}>
+                    {method}
+                  </span>
+                </td>
+                <td>{new Date(order.created_at).toLocaleDateString()}</td>
+                <td><b>{formatCurrency(Number(order.total ?? order.total_cents / 100))}</b></td>
+                <td>
+                  {onStatus ? (
+                    <select className={`status ${order.status}`} value={order.status} onChange={(event) => onStatus(order.id, event.target.value)}>
+                      {orderStatuses.map((item) => <option value={item} key={item}>{orderStatusLabel(item)}</option>)}
+                    </select>
+                  ) : (
+                    <span className={`status ${order.status}`}>{orderStatusLabel(order.status)}</span>
+                  )}
+                </td>
+                <td>
+                  <div className="row-actions">
+                    <Link className="table-icon" to={`${ADMIN_PATH}/orders/${order.id}`} aria-label={`View order ${order.id}`}><Eye /></Link>
+                    {onDelete ? <button type="button" className="table-icon danger" aria-label={`Delete order ${order.id}`} onClick={() => onDelete(order.id)}><Trash2 /></button> : null}
+                  </div>
+                </td>
+              </tr>
+            )
+          })}
+        </tbody>
+      </table>
+    </div>
+  )
 }
 
 export function AdminOrderDetail() {
   const { id } = useParams()
   const navigate = useNavigate()
   const [confirmOpen, setConfirmOpen] = useState(false)
+  const [cancelOpen, setCancelOpen] = useState(false)
   const [deleting, setDeleting] = useState(false)
+  const [busy, setBusy] = useState(false)
   const { data, loading, error, retry, setData } = useAdminData(
-    () => api.get(`/vince-77-00/orders/${id}`).then(({ data }) => data.order), [id],
+    () => api.get(`/glam-baddies/orders/${id}`).then(({ data }) => data.order), [id],
   )
-  const updateStatus = async (nextStatus) => {
+  const updateStatus = async (nextStatus, cancelReason = '') => {
+    if (nextStatus === 'cancelled' && !cancelReason) {
+      setCancelOpen(true)
+      return
+    }
     const previous = data
     setData({ ...data, status: nextStatus })
     try {
-      await api.put(`/vince-77-00/orders/${id}/status`, { status: nextStatus })
-      toast.success('Order status updated')
+      const { data: result } = await api.put(`/glam-baddies/orders/${id}/status`, {
+        status: nextStatus,
+        ...(nextStatus === 'cancelled' ? { cancel_reason: cancelReason } : {}),
+      })
+      if (result?.order) {
+        setData({
+          ...data,
+          status: result.order.status,
+          shipping_address: {
+            ...(typeof data.shipping_address === 'string'
+              ? JSON.parse(data.shipping_address)
+              : (data.shipping_address || {})),
+            ...(nextStatus === 'cancelled' ? { cancel_reason: cancelReason } : {}),
+          },
+        })
+      }
+      toast.success(nextStatus === 'cancelled' ? 'Order cancelled — customer notified' : 'Order status updated')
+      setCancelOpen(false)
     } catch (updateError) {
       setData(previous)
       toast.error(errorMessage(updateError, 'Could not update order'))
     }
   }
+  const confirmCancel = async (reason) => {
+    setBusy(true)
+    try {
+      const previous = data
+      setData({ ...data, status: 'cancelled' })
+      try {
+        const { data: result } = await api.put(`/glam-baddies/orders/${id}/status`, {
+          status: 'cancelled',
+          cancel_reason: reason,
+        })
+        setData({
+          ...data,
+          status: result?.order?.status || 'cancelled',
+          shipping_address: {
+            ...(typeof data.shipping_address === 'string'
+              ? JSON.parse(data.shipping_address)
+              : (data.shipping_address || {})),
+            cancel_reason: reason,
+          },
+        })
+        toast.success(
+          result?.email_sent
+            ? 'Order cancelled — customer emailed'
+            : `Order cancelled${result?.email_error ? ` (email not sent: ${result.email_error})` : ' — no customer email on file'}`
+        )
+        setCancelOpen(false)
+      } catch (updateError) {
+        setData(previous)
+        toast.error(errorMessage(updateError, 'Could not update order'))
+      }
+    } finally {
+      setBusy(false)
+    }
+  }
   const deleteOrder = async () => {
     setDeleting(true)
     try {
-      await api.post(`/vince-77-00/orders/${id}/delete`)
+      await api.post(`/glam-baddies/orders/${id}/delete`)
       toast.success('Order deleted')
       navigate(`${ADMIN_PATH}/orders`)
     } catch (deleteError) {
@@ -345,6 +782,8 @@ export function AdminOrderDetail() {
   if (error) return <AdminPage title="Order"><ErrorState retry={retry} /></AdminPage>
   if (!data) return <AdminPage title="Order"><EmptyState title="Order not found" text="This order may have been removed." action="Back to orders" to={`${ADMIN_PATH}/orders`} /></AdminPage>
   const address = typeof data.shipping_address === 'string' ? JSON.parse(data.shipping_address) : (data.shipping_address || {})
+  const bagItems = asArray(address.bag_items)
+  const fulfillment = String(address.fulfillment_method || 'delivery').toLowerCase()
   return <AdminPage title={`Order #${data.id}`} intro={`Placed ${new Date(data.created_at).toLocaleString()}`} action={<div className="form-actions"><button type="button" className="admin-button danger" disabled={deleting} onClick={() => setConfirmOpen(true)}><Trash2 /> Delete order</button><button className="admin-button" onClick={() => navigate(`${ADMIN_PATH}/orders`)}>Back to orders</button></div>}>
     <ConfirmDialog
       open={confirmOpen}
@@ -356,29 +795,43 @@ export function AdminOrderDetail() {
       onCancel={() => { if (!deleting) setConfirmOpen(false) }}
       onConfirm={deleteOrder}
     />
+    <CancelReasonDialog
+      open={cancelOpen}
+      orderId={data.id}
+      busy={busy}
+      onCancel={() => { if (!busy) setCancelOpen(false) }}
+      onConfirm={confirmCancel}
+    />
     <div className="dashboard-grid">
       <section className="admin-card">
         <div className="card-head"><div><h2>Customer</h2><p>Who placed this order</p></div></div>
-        <div className="customer-cell"><span>{(data.user_name || 'C').split(' ').map((item) => item[0]).join('')}</span><div><b>{data.user_name}</b><small>{data.user_email}</small></div></div>
+        <div className="customer-cell"><span>{(address.full_name || data.user_name || 'C').split(' ').map((item) => item[0]).join('')}</span><div><b>{address.full_name || data.user_name}</b><small>{address.phone || data.user_email}</small></div></div>
         <div className="stack-form" style={{ marginTop: '1.5rem' }}>
-          <label>Status<select className={`status ${data.status}`} value={data.status} onChange={(event) => updateStatus(event.target.value)}>{orderStatuses.map((item) => <option value={item} key={item}>{item}</option>)}</select></label>
+          <label>Status<select className={`status ${data.status}`} value={data.status} onChange={(event) => updateStatus(event.target.value)}>{orderStatuses.map((item) => <option value={item} key={item}>{orderStatusLabel(item)}</option>)}</select></label>
+          {address.cancel_reason && (
+            <p><small>Cancel reason</small><br /><strong>{address.cancel_reason}</strong></p>
+          )}
+          <p><small>Fulfillment</small><br /><strong className={`fulfillment-badge ${fulfillment}`}>{fulfillment === 'pickup' ? 'Pickup' : 'Delivery'}</strong></p>
           <div><small>Order ID</small><div><CopyValue value={String(data.id)} label="Copy order id" /></div></div>
           {data.payment_reference && <div><small>Payment reference</small><div><CopyValue value={data.payment_reference} label="Copy payment reference" /></div></div>}
           <p><small>Total</small><br /><strong>{formatCurrency(Number(data.total ?? data.total_cents / 100))}</strong></p>
         </div>
       </section>
       <section className="admin-card">
-        <div className="card-head"><div><h2>Shipping address</h2><p>Delivery destination</p></div></div>
-        <p>{[address.first_name, address.last_name].filter(Boolean).join(' ') || data.user_name}</p>
-        <p>{address.street || address.address_line1 || '—'}</p>
-        <p>{[address.city, address.state, address.postal_code].filter(Boolean).join(', ') || '—'}</p>
-        <p>{address.country || '—'}</p>
-        {address.phone && <p>{address.phone}</p>}
+        <div className="card-head"><div><h2>{fulfillment === 'pickup' ? 'Pickup details' : 'Delivery details'}</h2><p>Customer contact & notes</p></div></div>
+        <p><strong>{address.full_name || [address.first_name, address.last_name].filter(Boolean).join(' ') || data.user_name}</strong></p>
+        <p>{address.phone || '—'}</p>
+        <p>{address.email || data.user_email || '—'}</p>
+        <p><small>Location</small><br />{address.location || address.street || (fulfillment === 'pickup' ? 'Store pickup' : '—')}</p>
+        <p><small>Additional note</small><br />{address.additional_note || address.location_note || '—'}</p>
       </section>
     </div>
     <section className="admin-card table-card" style={{ marginTop: '1.5rem' }}>
       <div className="card-head"><div><h2>Items</h2><p>{data.items?.length || 0} line items</p></div></div>
-      <div className="data-table"><table><thead><tr><th>Product</th><th>Qty</th><th>Unit</th><th>Total</th></tr></thead><tbody>{(data.items || []).map((item) => <tr key={item.id}><td><div className="table-product">{item.image_url ? <img src={resolveImageUrl(item.image_url)} alt="" /> : <span />} <span><b>{item.product_name}</b><small>#{item.product_id || 'snapshot'}</small></span></div></td><td>{item.quantity}</td><td>{formatCurrency(Number(item.unit_price ?? item.unit_price_cents / 100))}</td><td><b>{formatCurrency(Number(item.line_total ?? (item.unit_price_cents * item.quantity) / 100))}</b></td></tr>)}</tbody></table></div>
+      <div className="data-table"><table><thead><tr><th>Product</th><th>Colour</th><th>Size</th><th>Qty</th><th>Unit</th><th>Total</th></tr></thead><tbody>{(data.items || []).map((item) => {
+        const snap = bagItems.find((bag) => Number(bag.product_id) === Number(item.product_id)) || {}
+        return <tr key={item.id}><td><div className="table-product">{item.image_url ? <img src={resolveImageUrl(item.image_url)} alt="" /> : <span />} <span><b>{item.product_name}</b><small>#{item.product_id || 'snapshot'}</small></span></div></td><td>{snap.color || '—'}</td><td>{snap.size || '—'}</td><td>{item.quantity}</td><td>{formatCurrency(Number(item.unit_price ?? item.unit_price_cents / 100))}</td><td><b>{formatCurrency(Number(item.line_total ?? (item.unit_price_cents * item.quantity) / 100))}</b></td></tr>
+      })}</tbody></table></div>
     </section>
   </AdminPage>
 }
@@ -391,7 +844,7 @@ export function AdminCategories() {
     const form = event.currentTarget
     const values = Object.fromEntries(new FormData(form))
     try {
-      const { data } = editing?.id ? await api.put(`/vince-77-00/categories/${editing.id}`, values) : await api.post('/vince-77-00/categories', values)
+      const { data } = editing?.id ? await api.put(`/glam-baddies/categories/${editing.id}`, values) : await api.post('/glam-baddies/categories', values)
       setData(editing?.id ? categories.map((item) => item.id === editing.id ? { ...item, ...data.category } : item) : [...categories, { ...data.category, product_count: 0 }])
       setEditing(null)
       toast.success(editing?.id ? 'Category updated' : 'Category created')
@@ -402,7 +855,7 @@ export function AdminCategories() {
   const remove = async (category) => {
     if (!window.confirm(`Delete ${category.name}? Products will become uncategorised.`)) return
     try {
-      await api.delete(`/vince-77-00/categories/${category.id}`)
+      await api.delete(`/glam-baddies/categories/${category.id}`)
       setData(categories.filter((item) => item.id !== category.id))
       toast.success('Category deleted')
     } catch (deleteError) {
@@ -414,8 +867,8 @@ export function AdminCategories() {
 
 export function AdminCustomers() {
   const [page, setPage] = useState(1)
-  const { data, loading, error, retry } = useAdminData(() => api.get('/vince-77-00/users', { params: { page, limit: 20 } }).then(({ data }) => data), [page])
-  return <AdminPage title="Customers" intro={`${data?.pagination.total || 0} customer profiles`}>{loading ? <LoadingGrid /> : error ? <ErrorState retry={retry} /> : data.users.length ? <section className="admin-card table-card"><div className="data-table"><table><thead><tr><th>Customer</th><th>Orders</th><th>Joined</th></tr></thead><tbody>{data.users.map((customer) => <tr key={customer.id}><td><div className="customer-cell"><span>{customer.name.split(' ').map((item) => item[0]).join('')}</span><div><b>{customer.name}</b><small>{customer.email}</small></div></div></td><td>{customer.order_count}</td><td>{new Date(customer.created_at).toLocaleDateString()}</td></tr>)}</tbody></table></div><Pagination page={page} total={data.pagination.total} limit={20} setPage={setPage} /></section> : <EmptyState title="No customers yet" text="Registered customers will appear here." />}</AdminPage>
+  const { data, loading, error, retry } = useAdminData(() => api.get('/glam-baddies/users', { params: { page, limit: 20 } }).then(({ data }) => data), [page])
+  return <AdminPage title="Customers" intro={`${data?.pagination.total || 0} customer profiles`}>{loading ? <LoadingGrid /> : error ? <ErrorState retry={retry} /> : data.users.length ? <section className="admin-card table-card"><div className="data-table"><table><thead><tr><th>Customer</th><th>Phone</th><th>Orders</th><th>Joined</th></tr></thead><tbody>{data.users.map((customer) => <tr key={customer.id}><td><div className="customer-cell"><span>{String(customer.name || 'C').split(' ').map((item) => item[0]).join('').slice(0, 2)}</span><div><b>{customer.name}</b><small>{customer.email || '—'}</small></div></div></td><td>{customer.phone || '—'}</td><td>{customer.order_count}</td><td>{new Date(customer.created_at).toLocaleDateString()}</td></tr>)}</tbody></table></div><Pagination page={page} total={data.pagination.total} limit={20} setPage={setPage} /></section> : <EmptyState title="No customers yet" text="Registered customers will appear here." />}</AdminPage>
 }
 
 export function AdminNewsletter() {
@@ -423,7 +876,7 @@ export function AdminNewsletter() {
   const [query, setQuery] = useState('')
   const [busyId, setBusyId] = useState(null)
   const { data, loading, error, retry, setData } = useAdminData(
-    () => api.get('/vince-77-00/newsletter', { params: { page, limit: 30, q: query || undefined } })
+    () => api.get('/glam-baddies/newsletter', { params: { page, limit: 30, q: query || undefined } })
       .then(({ data: result }) => ({
         subscribers: asArray(result?.subscribers),
         pagination: result?.pagination || { total: 0 },
@@ -440,7 +893,7 @@ export function AdminNewsletter() {
       pagination: { ...data.pagination, total: Math.max(0, (data.pagination?.total || 0) - 1) },
     })
     try {
-      await api.delete(`/vince-77-00/newsletter/${subscriber.id}`)
+      await api.delete(`/glam-baddies/newsletter/${subscriber.id}`)
       toast.success('Removed from private list')
     } catch (deleteError) {
       setData(previous)
@@ -512,7 +965,7 @@ export function AdminNewsletter() {
 
 export function Analytics() {
   const { data, loading, error, retry } = useAdminData(
-    () => api.get('/vince-77-00/analytics', { params: { days: 14 } }).then(({ data: result }) => result),
+    () => api.get('/glam-baddies/analytics', { params: { days: 14 } }).then(({ data: result }) => result),
     [],
   )
   if (loading) return <AdminPage title="Analytics" intro="Live performance across your storefront"><LoadingGrid /></AdminPage>
@@ -699,15 +1152,17 @@ export function AdminSettings() {
   const { admin } = useAuth()
   const [tab, setTab] = useState('account')
   const [saving, setSaving] = useState(false)
-  const [rateSaving, setRateSaving] = useState(false)
+  const [announcementSaving, setAnnouncementSaving] = useState(false)
   const [passwordSaving, setPasswordSaving] = useState(false)
+  const [adminSaving, setAdminSaving] = useState(false)
   const [showPublic, setShowPublic] = useState(false)
   const [showSecret, setShowSecret] = useState(false)
   const [showCurrent, setShowCurrent] = useState(false)
   const [showNew, setShowNew] = useState(false)
+  const [showAdminPassword, setShowAdminPassword] = useState(false)
   const [liveConfirmed, setLiveConfirmed] = useState(false)
   const { data, loading, error, retry, setData } = useAdminData(
-    () => api.get('/vince-77-00/settings').then(({ data: settings }) => {
+    () => api.get('/glam-baddies/settings').then(({ data: settings }) => {
       setLiveConfirmed(settings.payment_mode === 'live')
       return {
         purchases_enabled: settings.purchases_enabled !== false,
@@ -717,8 +1172,19 @@ export function AdminSettings() {
         live_public: settings.paystack_live_public_key || '',
         live_secret: settings.paystack_live_secret_key || '',
         usd_to_ghs_rate: Number(settings.usd_to_ghs_rate) > 0 ? Number(settings.usd_to_ghs_rate) : 15.5,
+        announcement_text: settings.announcement_text || 'Shop · Slay · Shine',
       }
     }),
+    [],
+  )
+  const {
+    data: adminsData,
+    loading: adminsLoading,
+    error: adminsError,
+    retry: retryAdmins,
+    setData: setAdminsData,
+  } = useAdminData(
+    () => api.get('/glam-baddies/admins').then(({ data: payload }) => asArray(payload?.admins)),
     [],
   )
 
@@ -752,7 +1218,7 @@ export function AdminSettings() {
     if (!data || saving) return
     setSaving(true)
     try {
-      const { data: result } = await api.put('/vince-77-00/settings', {
+      const { data: result } = await api.put('/glam-baddies/settings', {
         payment_mode: data.payment_mode,
         paystack_test_public_key: data.test_public,
         paystack_test_secret_key: data.test_secret,
@@ -787,7 +1253,7 @@ export function AdminSettings() {
     const previous = data
     setData({ ...data, purchases_enabled: next })
     try {
-      const { data: result } = await api.put('/vince-77-00/settings', { purchases_enabled: next })
+      const { data: result } = await api.put('/glam-baddies/settings', { purchases_enabled: next })
       toast.success(result.message || (next ? 'Purchases enabled' : 'Purchases paused'))
     } catch (toggleError) {
       setData(previous)
@@ -795,33 +1261,23 @@ export function AdminSettings() {
     }
   }
 
-  const saveRate = async (event) => {
+  const saveAnnouncement = async (event) => {
     event.preventDefault()
-    if (!data || rateSaving) return
-    const rate = Number(data.usd_to_ghs_rate)
-    if (!Number.isFinite(rate) || rate <= 0) {
-      toast.error('Enter a valid USD → GHS rate greater than 0')
+    if (!data || announcementSaving) return
+    const text = String(data.announcement_text || '').trim().slice(0, 80)
+    if (!text) {
+      toast.error('Enter a short announcement')
       return
     }
-    setRateSaving(true)
+    setAnnouncementSaving(true)
     try {
-      // Prefer dedicated route; fall back to general settings if API is older.
-      let result
-      try {
-        ({ data: result } = await api.put('/vince-77-00/settings/rate', { usd_to_ghs_rate: rate }))
-      } catch (routeError) {
-        if (routeError?.status !== 404) throw routeError
-        ({ data: result } = await api.put('/vince-77-00/settings', { usd_to_ghs_rate: rate }))
-      }
-      setData({
-        ...data,
-        usd_to_ghs_rate: Number(result.usd_to_ghs_rate) > 0 ? Number(result.usd_to_ghs_rate) : rate,
-      })
-      toast.success(result.message || `USD → GHS rate updated to ${rate}`)
+      const { data: result } = await api.put('/glam-baddies/settings', { announcement_text: text })
+      setData({ ...data, announcement_text: result.announcement_text || text })
+      toast.success(result.message || 'Announcement bar updated')
     } catch (saveError) {
-      toast.error(errorMessage(saveError, 'Could not save exchange rate'))
+      toast.error(errorMessage(saveError, 'Could not save announcement'))
     } finally {
-      setRateSaving(false)
+      setAnnouncementSaving(false)
     }
   }
 
@@ -835,7 +1291,7 @@ export function AdminSettings() {
     }
     setPasswordSaving(true)
     try {
-      const { data: result } = await api.put('/vince-77-00/password', {
+      const { data: result } = await api.put('/glam-baddies/password', {
         current_password: fields.current_password,
         new_password: fields.new_password,
       })
@@ -848,17 +1304,54 @@ export function AdminSettings() {
     }
   }
 
+  const createAdmin = async (event) => {
+    event.preventDefault()
+    const form = event.currentTarget
+    const fields = Object.fromEntries(new FormData(form))
+    if (fields.password !== fields.confirm_password) {
+      toast.error('Passwords do not match')
+      return
+    }
+    setAdminSaving(true)
+    try {
+      const { data: result } = await api.post('/glam-baddies/admins', {
+        name: fields.name,
+        email: fields.email,
+        password: fields.password,
+      })
+      setAdminsData([...(adminsData || []), result.admin])
+      toast.success(result.message || 'Admin added')
+      form.reset()
+      setShowAdminPassword(false)
+    } catch (saveError) {
+      toast.error(errorMessage(saveError, 'Could not add admin'))
+    } finally {
+      setAdminSaving(false)
+    }
+  }
+
+  const removeAdmin = async (target) => {
+    if (!window.confirm(`Remove admin ${target.email}?`)) return
+    try {
+      await api.delete(`/glam-baddies/admins/${target.id}`)
+      setAdminsData((adminsData || []).filter((item) => item.id !== target.id))
+      toast.success('Admin removed')
+    } catch (deleteError) {
+      toast.error(errorMessage(deleteError, 'Could not remove admin'))
+    }
+  }
+
   return (
     <AdminPage title="Settings" intro="Account security, store availability, and payment keys.">
       <div className="settings-shell">
         <aside className="settings-nav" role="tablist" aria-label="Settings sections">
           <button type="button" role="tab" aria-selected={tab === 'account'} className={tab === 'account' ? 'active' : ''} onClick={() => setTab('account')}>
             <span>Account</span>
-            <small>Password &amp; profile</small>
+            <small>Password &amp; admins</small>
           </button>
           <button type="button" role="tab" aria-selected={tab === 'store'} className={tab === 'store' ? 'active' : ''} onClick={() => setTab('store')}>
             <span>Store</span>
-            <small>Purchases &amp; rate</small>
+            <small>Purchases &amp; currency</small>
           </button>
           <button type="button" role="tab" aria-selected={tab === 'payments'} className={tab === 'payments' ? 'active' : ''} onClick={() => setTab('payments')}>
             <span>Payments</span>
@@ -868,52 +1361,125 @@ export function AdminSettings() {
 
         <div className="settings-panel">
           {loading ? <LoadingGrid /> : error ? <ErrorState retry={retry} /> : tab === 'account' ? (
-            <section className="admin-card account-settings">
-              <div className="card-head">
-                <div>
-                  <h2>Admin account</h2>
-                  <p>Update the password used to sign in to the admin panel.</p>
+            <div className="store-settings-stack">
+              <section className="admin-card account-settings">
+                <div className="card-head">
+                  <div>
+                    <h2>Admin account</h2>
+                    <p>Update the password used to sign in to the admin panel.</p>
+                  </div>
                 </div>
-              </div>
-              <div className="account-profile">
-                <span>{(admin?.name || 'A').split(' ').map((part) => part[0]).join('').slice(0, 2)}</span>
-                <div>
-                  <b>{admin?.name || 'Administrator'}</b>
-                  <small>{admin?.email || '—'}</small>
+                <div className="account-profile">
+                  <span>{(admin?.name || 'A').split(' ').map((part) => part[0]).join('').slice(0, 2)}</span>
+                  <div>
+                    <b>{admin?.name || 'Administrator'}</b>
+                    <small>{admin?.email || '—'}</small>
+                  </div>
                 </div>
-              </div>
-              <form className="stack-form password-form" onSubmit={changePassword}>
-                <h3>Change password</h3>
-                <label>
-                  Current password
-                  <span className="secret-field">
-                    <input name="current_password" type={showCurrent ? 'text' : 'password'} required autoComplete="current-password" />
-                    <button type="button" className="reveal-key" onClick={() => setShowCurrent((value) => !value)} aria-label={showCurrent ? 'Hide current password' : 'Show current password'}>
-                      {showCurrent ? <EyeOff /> : <Eye />}
+                <form className="stack-form password-form" onSubmit={changePassword}>
+                  <h3>Change password</h3>
+                  <label>
+                    Current password
+                    <span className="secret-field">
+                      <input name="current_password" type={showCurrent ? 'text' : 'password'} required autoComplete="current-password" />
+                      <button type="button" className="reveal-key" onClick={() => setShowCurrent((value) => !value)} aria-label={showCurrent ? 'Hide current password' : 'Show current password'}>
+                        {showCurrent ? <EyeOff /> : <Eye />}
+                      </button>
+                    </span>
+                  </label>
+                  <label>
+                    New password
+                    <span className="secret-field">
+                      <input name="new_password" type={showNew ? 'text' : 'password'} required minLength={8} autoComplete="new-password" />
+                      <button type="button" className="reveal-key" onClick={() => setShowNew((value) => !value)} aria-label={showNew ? 'Hide new password' : 'Show new password'}>
+                        {showNew ? <EyeOff /> : <Eye />}
+                      </button>
+                    </span>
+                  </label>
+                  <label>
+                    Confirm new password
+                    <input name="confirm_password" type="password" required minLength={8} autoComplete="new-password" />
+                  </label>
+                  <p className="settings-hint">Use at least 8 characters. You will stay signed in after updating.</p>
+                  <div className="form-actions">
+                    <button type="submit" className="admin-button primary" disabled={passwordSaving}>
+                      <Check /> {passwordSaving ? 'Updating…' : 'Update password'}
                     </button>
-                  </span>
-                </label>
-                <label>
-                  New password
-                  <span className="secret-field">
-                    <input name="new_password" type={showNew ? 'text' : 'password'} required minLength={8} autoComplete="new-password" />
-                    <button type="button" className="reveal-key" onClick={() => setShowNew((value) => !value)} aria-label={showNew ? 'Hide new password' : 'Show new password'}>
-                      {showNew ? <EyeOff /> : <Eye />}
-                    </button>
-                  </span>
-                </label>
-                <label>
-                  Confirm new password
-                  <input name="confirm_password" type="password" required minLength={8} autoComplete="new-password" />
-                </label>
-                <p className="settings-hint">Use at least 8 characters. You will stay signed in after updating.</p>
-                <div className="form-actions">
-                  <button type="submit" className="admin-button primary" disabled={passwordSaving}>
-                    <Check /> {passwordSaving ? 'Updating…' : 'Update password'}
-                  </button>
+                  </div>
+                </form>
+              </section>
+
+              <section className="admin-card">
+                <div className="card-head">
+                  <div>
+                    <h2>Admin users</h2>
+                    <p>Add more people who can manage GlamBaddies.</p>
+                  </div>
                 </div>
-              </form>
-            </section>
+                {adminsLoading ? <LoadingGrid /> : adminsError ? <ErrorState retry={retryAdmins} /> : (
+                  <div className="data-table">
+                    <table>
+                      <thead>
+                        <tr>
+                          <th>Name</th>
+                          <th>Email</th>
+                          <th>Joined</th>
+                          <th />
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {asArray(adminsData).map((item) => (
+                          <tr key={item.id}>
+                            <td>
+                              <b>{item.name}</b>
+                              {Number(item.id) === Number(admin?.id) ? <small> (you)</small> : null}
+                            </td>
+                            <td>{item.email}</td>
+                            <td>{item.created_at ? new Date(item.created_at).toLocaleDateString() : '—'}</td>
+                            <td>
+                              {Number(item.id) === Number(admin?.id) ? null : (
+                                <button type="button" className="table-icon danger" aria-label={`Remove ${item.email}`} onClick={() => removeAdmin(item)}>
+                                  <Trash2 />
+                                </button>
+                              )}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+                <form className="stack-form password-form" onSubmit={createAdmin} style={{ marginTop: '1.5rem' }}>
+                  <h3>Add admin</h3>
+                  <label>
+                    Full name
+                    <input name="name" required autoComplete="name" placeholder="e.g. Ama Mensah" />
+                  </label>
+                  <label>
+                    Email
+                    <input name="email" type="email" required autoComplete="email" placeholder="admin@example.com" />
+                  </label>
+                  <label>
+                    Password
+                    <span className="secret-field">
+                      <input name="password" type={showAdminPassword ? 'text' : 'password'} required minLength={8} autoComplete="new-password" />
+                      <button type="button" className="reveal-key" onClick={() => setShowAdminPassword((value) => !value)} aria-label={showAdminPassword ? 'Hide password' : 'Show password'}>
+                        {showAdminPassword ? <EyeOff /> : <Eye />}
+                      </button>
+                    </span>
+                  </label>
+                  <label>
+                    Confirm password
+                    <input name="confirm_password" type="password" required minLength={8} autoComplete="new-password" />
+                  </label>
+                  <div className="form-actions">
+                    <button type="submit" className="admin-button primary" disabled={adminSaving}>
+                      <Plus /> {adminSaving ? 'Adding…' : 'Add admin'}
+                    </button>
+                  </div>
+                </form>
+              </section>
+            </div>
           ) : tab === 'store' ? (
             <div className="store-settings-stack">
               <section className="admin-card store-toggle-card">
@@ -926,32 +1492,40 @@ export function AdminSettings() {
                   <i />
                 </button>
               </section>
-              <form className="admin-card stack-form" onSubmit={saveRate}>
+              <form className="admin-card stack-form" onSubmit={saveAnnouncement}>
                 <div className="card-head">
                   <div>
-                    <h2>USD → GHS rate</h2>
-                    <p>Reference rate stored with orders. Customers still pay in USD on Paystack.</p>
+                    <h2>Announcement bar</h2>
+                    <p>Short black bar text at the top of the storefront. Keep it brief.</p>
                   </div>
                 </div>
                 <label>
-                  Exchange rate
+                  Announcement text
                   <input
-                    type="number"
-                    min="0.0001"
-                    step="0.0001"
+                    type="text"
+                    maxLength={80}
                     required
-                    value={data?.usd_to_ghs_rate ?? 15.5}
-                    onChange={(event) => setData({ ...data, usd_to_ghs_rate: event.target.value })}
-                    placeholder="e.g. 15.5"
+                    value={data?.announcement_text ?? ''}
+                    onChange={(event) => setData({ ...data, announcement_text: event.target.value.slice(0, 80) })}
+                    placeholder="e.g. Shop · Slay · Shine"
                   />
                 </label>
-                <p className="settings-hint">1 USD = {Number(data?.usd_to_ghs_rate) || 15.5} GHS</p>
+                <p className="settings-hint">{(data?.announcement_text || '').length}/80 characters</p>
                 <div className="form-actions">
-                  <button type="submit" className="admin-button primary" disabled={rateSaving}>
-                    <Check /> {rateSaving ? 'Saving…' : 'Save rate'}
+                  <button type="submit" className="admin-button primary" disabled={announcementSaving}>
+                    <Check /> {announcementSaving ? 'Saving…' : 'Save announcement'}
                   </button>
                 </div>
               </form>
+              <section className="admin-card">
+                <div className="card-head">
+                  <div>
+                    <h2>Currency</h2>
+                    <p>GlamBaddies prices and Paystack charges are in GHS — no conversion.</p>
+                  </div>
+                </div>
+                <p className="settings-hint">Catalogue prices, order totals, and Paystack charges all use Ghanaian Cedi (GHS). Enter product prices in GHS.</p>
+              </section>
             </div>
           ) : (
             <form className="admin-card payments-settings" onSubmit={savePayments}>

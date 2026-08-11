@@ -1,5 +1,8 @@
--- Flowers & Jewellery catalogue additions (idempotent — safe to run in production).
--- Adds 2 categories, 5 flower bouquets and 5 gold/diamond rings with images.
+-- DEPRECATED for GlamBaddies — do not run.
+-- This file targets multi-category Vublishop catalogues (flowers, jewellery, etc.).
+-- GlamBaddies sells dresses only. Use database/seed.sql or database/girls-dresses.sql
+-- against glambaddies_db.
+
 
 BEGIN;
 

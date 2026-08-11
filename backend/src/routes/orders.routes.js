@@ -2,8 +2,9 @@ const router = require('express').Router();
 const auth = require('../middleware/auth');
 const controller = require('../controllers/orders.controller');
 
-// Public — anyone can track with a payment reference (no sign-in).
-router.get('/track/:reference', controller.trackByReference);
+// Public — track with the phone number used at checkout (no sign-in).
+router.get('/track', controller.trackByPhone);
+router.get('/track/:phone', controller.trackByPhone);
 // Public — guest checkout from bag items (optional customer JWT attaches to account).
 router.post('/guest', controller.createGuest);
 

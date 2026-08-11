@@ -148,6 +148,10 @@ async function ensureSettings() {
     ALTER TABLE store_settings
       ADD COLUMN IF NOT EXISTS catalogue_revision BIGINT NOT NULL DEFAULT 1
   `);
+  await db.query(`
+    ALTER TABLE store_settings
+      ADD COLUMN IF NOT EXISTS announcement_text VARCHAR(120) NOT NULL DEFAULT 'Shop · Slay · Shine'
+  `);
 
   await db.query(`
     INSERT INTO store_settings (id, purchases_enabled)
@@ -249,6 +253,7 @@ function publicSettingsPayload(row) {
     paystack_live_public_key: row.paystack_live_public_key || '',
     paystack_live_secret_key: row.paystack_live_secret_key || '',
     usd_to_ghs_rate: Number.isFinite(rate) && rate > 0 ? rate : 15.5,
+    announcement_text: String(row.announcement_text || 'Shop · Slay · Shine').slice(0, 120),
     updated_at: row.updated_at,
   };
 }
@@ -290,6 +295,7 @@ exports.getStatus = async (req, res, next) => {
     const purchases_enabled = await getPurchasesEnabled();
     const payment = await getPaymentConfig();
     const catalogue_revision = await getCatalogueRevision();
+    const settings = await getSettingsRow();
     res.set({
       'Cache-Control': 'no-store, no-cache, must-revalidate, private',
       Pragma: 'no-cache',
@@ -300,6 +306,7 @@ exports.getStatus = async (req, res, next) => {
       payment_mode: payment.payment_mode,
       paystack_public_key: payment.public_key || null,
       catalogue_revision,
+      announcement_text: String(settings?.announcement_text || 'Shop · Slay · Shine').slice(0, 120),
       message: purchases_enabled
         ? 'Store is open for purchases'
         : 'Item unavailable. Please try again later.',

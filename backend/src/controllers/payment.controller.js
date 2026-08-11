@@ -2,16 +2,17 @@ const crypto = require('crypto');
 const axios = require('axios');
 const db = require('../config/db');
 const { ApiError } = require('../middleware/error');
+const { getFrontendOrigin } = require('../utils/site');
 
 const PAYSTACK_BASE_URL =
   process.env.PAYSTACK_BASE_URL || 'https://api.paystack.co';
 
 /**
- * Ghana Paystack merchants can only initialize charges in GHS (not USD).
- * Catalogue/orders stay USD; we convert to GHS pesewas at the admin rate
- * only when talking to Paystack. Settlement to the merchant bank is GHS.
+ * GlamBaddies — catalogue, orders, and Paystack charges are all GHS.
+ * Prices are stored as pesewas (1 GHS = 100 pesewas). No USD conversion.
  */
 const PAYSTACK_CHARGE_CURRENCY = 'GHS';
+const APP_NAME = process.env.APP_NAME || 'GlamBaddies';
 
 function paystackClient(secretKey) {
   if (!secretKey) {
@@ -33,12 +34,6 @@ function paystackErrorMessage(err, fallback = 'Payment provider request failed')
     return err.response?.data?.message || err.message || fallback;
   }
   return err?.message || fallback;
-}
-
-function usdCentsToGhsPesewas(usdCents, rate) {
-  const dollars = Number(usdCents) / 100;
-  const cedis = dollars * Number(rate);
-  return Math.round(cedis * 100);
 }
 
 const ALLOWED_PAYSTACK_CHANNELS = new Set([
@@ -93,6 +88,7 @@ async function initializePaystackCharge(client, {
     currency: payload.currency,
     reference: payload.reference,
     channels: payload.channels,
+    app: APP_NAME,
   });
 
   const response = await client.post('/transaction/initialize', payload);
@@ -110,14 +106,6 @@ async function initializePaystackCharge(client, {
   });
 
   return data;
-}
-
-function getFrontendOrigin() {
-  return String(
-    process.env.FRONTEND_URL ||
-      process.env.CLIENT_URL ||
-      'http://localhost:5173'
-  ).replace(/\/$/, '');
 }
 
 async function loadPayableOrder(req, orderId) {
@@ -162,46 +150,71 @@ async function loadPayableOrder(req, orderId) {
   )
     .trim()
     .toLowerCase();
-  if (!email) throw new ApiError(400, 'Order is missing a contact email');
+  const phoneDigits = String(address.phone || '')
+    .replace(/\D/g, '');
+  const resolvedEmail =
+    email ||
+    (phoneDigits ? `${phoneDigits}@checkout.glambaddies.com` : '');
+  if (!resolvedEmail) throw new ApiError(400, 'Order is missing contact details');
 
-  const amountUsdCents = Math.round(Number(order.total_cents));
-  if (amountUsdCents < 100) {
+  // total_cents is GHS pesewas — charged as-is (no conversion).
+  const amountGhsPesewas = Math.round(Number(order.total_cents));
+  if (amountGhsPesewas < 100) {
     throw new ApiError(400, 'Order total is too low for payment');
   }
 
-  const { getUsdToGhsRate } = require('./store.controller');
-  const rate = await getUsdToGhsRate();
-  const amountGhsPesewas = usdCentsToGhsPesewas(amountUsdCents, rate);
-  if (amountGhsPesewas < 100) {
-    throw new ApiError(400, 'Converted GHS amount is too low for payment');
-  }
-
-  return { order, address, email, amountUsdCents, amountGhsPesewas, rate };
+  return { order, address, email: resolvedEmail, amountGhsPesewas };
 }
 
-async function lockOrderPayment({
-  order,
-  email,
-  amountUsdCents,
-  amountGhsPesewas,
-  rate,
-  reference,
-}) {
+async function lockOrderPayment({ order, email, amountGhsPesewas, reference }) {
+  const address =
+    typeof order.shipping_address === 'string'
+      ? JSON.parse(order.shipping_address)
+      : order.shipping_address || {};
+
+  const existingCustomerEmail = String(
+    address.customer_email || address.email || ''
+  )
+    .trim()
+    .toLowerCase();
+  const customerEmail =
+    existingCustomerEmail &&
+    !existingCustomerEmail.endsWith('@checkout.glambaddies.com')
+      ? existingCustomerEmail
+      : String(email || '')
+          .trim()
+          .toLowerCase()
+          .endsWith('@checkout.glambaddies.com')
+        ? existingCustomerEmail || null
+        : String(email || '')
+            .trim()
+            .toLowerCase() || null;
+
   await db.query(
     `UPDATE orders
      SET payment_reference = $1,
+         currency = 'GHS',
          shipping_address = COALESCE(shipping_address, '{}'::jsonb)
            || jsonb_build_object(
                 'paystack_currency', 'GHS',
                 'paystack_amount_minor', $2::int,
-                'display_currency', 'USD',
-                'display_amount_cents', $3::int,
-                'usd_to_ghs_rate', $4::numeric,
-                'email', $5::text
-              ),
+                'display_currency', 'GHS',
+                'display_amount_cents', $2::int,
+                'paystack_email', $3::text,
+                'store_name', $4::text
+              )
+           || CASE
+                WHEN $5::text IS NOT NULL AND $5::text <> '' THEN
+                  jsonb_build_object(
+                    'email', $5::text,
+                    'customer_email', $5::text,
+                    'email_provided', true
+                  )
+                ELSE '{}'::jsonb
+              END,
          updated_at = NOW()
      WHERE id = $6`,
-    [reference, amountGhsPesewas, amountUsdCents, rate, email, order.id]
+    [reference, amountGhsPesewas, email, APP_NAME, customerEmail, order.id]
   );
 }
 
@@ -235,8 +248,12 @@ async function assertPaymentConfigured() {
   return paymentConfig;
 }
 
+function paymentReferenceFor(orderId) {
+  return `GLAM-${orderId}-${crypto.randomBytes(8).toString('hex')}`;
+}
+
 // POST /api/payment/prepare { order_id }
-// Apple Pay paymentRequest — GHS pesewas (Ghana merchant requirement).
+// Apple Pay paymentRequest — GHS pesewas (no conversion).
 exports.prepare = async (req, res, next) => {
   try {
     const paymentConfig = await assertPaymentConfigured();
@@ -249,34 +266,25 @@ exports.prepare = async (req, res, next) => {
       throw new ApiError(400, 'order_id is required');
     }
 
-    const { order, email, amountUsdCents, amountGhsPesewas, rate } =
-      await loadPayableOrder(req, orderId);
-    const reference = `VUB-${order.id}-${crypto.randomBytes(8).toString('hex')}`;
+    const { order, email, amountGhsPesewas } = await loadPayableOrder(req, orderId);
+    const reference = paymentReferenceFor(order.id);
 
-    await lockOrderPayment({
-      order,
-      email,
-      amountUsdCents,
-      amountGhsPesewas,
-      rate,
-      reference,
-    });
+    await lockOrderPayment({ order, email, amountGhsPesewas, reference });
 
     res.json({
       reference,
       email,
       amount: amountGhsPesewas,
       amount_ghs_pesewas: amountGhsPesewas,
-      amount_usd_cents: amountUsdCents,
       currency: 'GHS',
       paystack_public_key: paymentConfig.public_key,
       payment_mode: paymentConfig.payment_mode,
       order_id: order.id,
-      display_currency: 'USD',
-      display_amount: Number((amountUsdCents / 100).toFixed(2)),
+      display_currency: 'GHS',
+      display_amount: Number((amountGhsPesewas / 100).toFixed(2)),
       charged_currency: 'GHS',
       charged_amount: Number((amountGhsPesewas / 100).toFixed(2)),
-      usd_to_ghs_rate: rate,
+      store_name: APP_NAME,
     });
   } catch (err) {
     next(err);
@@ -284,7 +292,7 @@ exports.prepare = async (req, res, next) => {
 };
 
 // POST /api/payment/initialize { order_id, channels? }
-// Ghana merchants: charge GHS. Storefront display stays USD.
+// Charge GHS directly — catalogue prices are already GHS.
 exports.initialize = async (req, res, next) => {
   try {
     const paymentConfig = await assertPaymentConfigured();
@@ -294,21 +302,19 @@ exports.initialize = async (req, res, next) => {
       throw new ApiError(400, 'order_id is required');
     }
 
-    const { order, email, amountUsdCents, amountGhsPesewas, rate } =
-      await loadPayableOrder(req, orderId);
+    const { order, email, amountGhsPesewas } = await loadPayableOrder(req, orderId);
     const channels = resolvePaystackChannels(req.body?.channels);
-    const reference = `VUB-${order.id}-${crypto.randomBytes(8).toString('hex')}`;
-    const callback_url = `${getFrontendOrigin()}/order-confirmation`;
+    const reference = paymentReferenceFor(order.id);
+    const callback_url = `${getFrontendOrigin()}/payment/verify`;
     const client = paystackClient(paymentConfig.secret_key);
 
     console.log('[payment:initialize]', {
       order_id: order.id,
       email,
-      amountUsdCents,
       amountGhsPesewas,
-      rate,
       currency: PAYSTACK_CHARGE_CURRENCY,
       reference,
+      store_name: APP_NAME,
     });
 
     let data;
@@ -326,9 +332,9 @@ exports.initialize = async (req, res, next) => {
           payment_mode: paymentConfig.payment_mode,
           charged_currency: 'GHS',
           charged_amount_pesewas: amountGhsPesewas,
-          display_currency: 'USD',
-          display_amount_cents: amountUsdCents,
-          usd_to_ghs_rate: rate,
+          display_currency: 'GHS',
+          display_amount_cents: amountGhsPesewas,
+          store_name: APP_NAME,
           channels,
         },
       });
@@ -339,14 +345,7 @@ exports.initialize = async (req, res, next) => {
       );
     }
 
-    await lockOrderPayment({
-      order,
-      email,
-      amountUsdCents,
-      amountGhsPesewas,
-      rate,
-      reference,
-    });
+    await lockOrderPayment({ order, email, amountGhsPesewas, reference });
 
     res.json({
       authorization_url: data.authorization_url,
@@ -357,13 +356,12 @@ exports.initialize = async (req, res, next) => {
       paystack_public_key: paymentConfig.public_key || null,
       amount: amountGhsPesewas,
       amount_ghs_pesewas: amountGhsPesewas,
-      amount_usd_cents: amountUsdCents,
       currency: 'GHS',
-      display_currency: 'USD',
-      display_amount: Number((amountUsdCents / 100).toFixed(2)),
+      display_currency: 'GHS',
+      display_amount: Number((amountGhsPesewas / 100).toFixed(2)),
       charged_currency: 'GHS',
       charged_amount: Number((amountGhsPesewas / 100).toFixed(2)),
-      usd_to_ghs_rate: rate,
+      store_name: APP_NAME,
       channels,
     });
   } catch (err) {
@@ -407,6 +405,13 @@ exports.verify = async (req, res, next) => {
       [reference]
     );
     if (existing.rows.length > 0) {
+      // Retry receipt if the first verify succeeded before SMTP was ready
+      try {
+        const { sendPaymentReceipt } = require('../services/orderEmails');
+        await sendPaymentReceipt(order.id);
+      } catch (mailErr) {
+        console.error('[mail] payment receipt retry failed:', mailErr.message);
+      }
       return res.json({
         verified: true,
         already_processed: true,
@@ -479,9 +484,9 @@ exports.verify = async (req, res, next) => {
             currency: tx.currency,
             channel: tx.channel,
             paid_at: tx.paid_at,
-            display_currency: 'USD',
+            display_currency: 'GHS',
             display_amount_cents: order.total_cents,
-            usd_to_ghs_rate: address.usd_to_ghs_rate || null,
+            store_name: APP_NAME,
           }),
         ]
       );
@@ -510,13 +515,21 @@ exports.verify = async (req, res, next) => {
       client.release();
     }
 
+    // Premium receipt email — never block payment success if mail fails
+    try {
+      const { sendPaymentReceipt } = require('../services/orderEmails');
+      await sendPaymentReceipt(order.id);
+    } catch (mailErr) {
+      console.error('[mail] payment receipt failed:', mailErr.message);
+    }
+
     res.json({
       verified: true,
       already_processed: false,
       order_id: order.id,
       order_status: 'paid',
       charged_currency: expectedCurrency,
-      display_currency: 'USD',
+      display_currency: 'GHS',
     });
   } catch (err) {
     if (axios.isAxiosError(err)) {

@@ -1,6 +1,6 @@
 import axios from 'axios'
 
-export const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000/api'
+export const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3100/api'
 export const API_ORIGIN = API_URL.replace(/\/api\/?$/, '')
 
 const api = axios.create({
@@ -10,8 +10,9 @@ const api = axios.create({
 
 api.interceptors.request.use((config) => {
   if (!config.headers?.Authorization) {
-    const isAdmin = config.url?.startsWith('/vince-77-00')
-    const token = localStorage.getItem(isAdmin ? 'vub_admin_token' : 'vub_customer_token')
+    const isAdmin = config.url?.startsWith('/glam-baddies')
+    const token = localStorage.getItem(isAdmin ? 'glam_admin_token' : 'glam_customer_token')
+      || localStorage.getItem(isAdmin ? 'vub_admin_token' : 'vub_customer_token')
     if (token) config.headers.Authorization = `Bearer ${token}`
   }
   // Bust browser/proxy caches for catalogue reads.
@@ -29,16 +30,18 @@ api.interceptors.response.use(
     const status = error.response?.status
     const requestUrl = String(error.config?.url || '')
     const isAuthAttempt = /\/(login|register)$/.test(requestUrl)
-    const isAdmin = requestUrl.includes('/vince-77-00')
+    const isAdmin = requestUrl.includes('/glam-baddies')
     if (status === 401 && !isAuthAttempt) {
       const type = isAdmin ? 'admin' : 'customer'
-      const tokenKey = `vub_${type}_token`
-      const hadToken = Boolean(localStorage.getItem(tokenKey))
+      const tokenKey = `glam_${type}_token`
+      const hadToken = Boolean(localStorage.getItem(tokenKey) || localStorage.getItem(`vub_${type}_token`))
       localStorage.removeItem(tokenKey)
+      localStorage.removeItem(`glam_${type}`)
+      localStorage.removeItem(`vub_${type}_token`)
       localStorage.removeItem(`vub_${type}`)
       // Only bounce signed-in users to login — guests can stay on checkout.
       if (hadToken) {
-        const destination = isAdmin ? '/vince-77-00/login' : `/login?next=${encodeURIComponent(`${window.location.pathname}${window.location.search}`)}`
+        const destination = isAdmin ? '/glam-baddies/login' : `/login?next=${encodeURIComponent(`${window.location.pathname}${window.location.search}`)}`
         if (!window.location.pathname.startsWith(destination.split('?')[0])) window.location.assign(destination)
       }
     }
@@ -52,8 +55,14 @@ api.interceptors.response.use(
 export const asArray = (value) => (Array.isArray(value) ? value : [])
 
 export const resolveImageUrl = (url) => {
-  if (!url) return 'https://images.unsplash.com/photo-1445205170230-053b83016050?auto=format&fit=crop&w=900&q=80'
-  return /^https?:\/\//i.test(url) ? url : `${API_ORIGIN}${url.startsWith('/') ? '' : '/'}${url}`
+  if (!url || url === 'undefined' || url === 'null' || url === 'Unknown') {
+    return 'https://images.unsplash.com/photo-1496747611176-843222e1e57c?auto=format&fit=crop&w=900&q=80'
+  }
+  const value = String(url).trim()
+  if (!value) {
+    return 'https://images.unsplash.com/photo-1496747611176-843222e1e57c?auto=format&fit=crop&w=900&q=80'
+  }
+  return /^https?:\/\//i.test(value) ? value : `${API_ORIGIN}${value.startsWith('/') ? '' : '/'}${value}`
 }
 
 export const mapProduct = (product) => {
@@ -67,9 +76,13 @@ export const mapProduct = (product) => {
       images: [],
       stock: 0,
       sizes: [],
+      is_active: false,
     }
   }
-  const rawImages = asArray(product.images)
+  const rawImages = asArray(product.images).filter((image) => {
+    const url = typeof image === 'string' ? image : image?.url
+    return Boolean(url && url !== 'undefined' && url !== 'null' && url !== 'Unknown')
+  })
   const images = rawImages.map((image) => resolveImageUrl(typeof image === 'string' ? image : image?.url))
   const primaryIndex = rawImages.findIndex((image) => image?.is_primary)
   return {
@@ -81,6 +94,7 @@ export const mapProduct = (product) => {
     image: images[primaryIndex >= 0 ? primaryIndex : 0] || resolveImageUrl(product.image_url || product.image),
     images,
     sizes: asArray(product.sizes),
+    is_active: product.is_active !== false && product.is_active !== 'false' && product.is_active !== 0,
   }
 }
 
@@ -94,18 +108,18 @@ export const mapProducts = (products) =>
 export const bustProductCache = (revision) => {
   const next = String(revision || Date.now())
   try {
-    localStorage.setItem('vub_products_rev', next)
+    localStorage.setItem('glam_products_rev', next)
   } catch {
     /* ignore */
   }
   if (typeof window !== 'undefined') {
-    window.dispatchEvent(new CustomEvent('vub:products-changed', { detail: { revision: next } }))
+    window.dispatchEvent(new CustomEvent('glam:products-changed', { detail: { revision: next } }))
   }
 }
 
 export const getProductCacheRev = () => {
   try {
-    return localStorage.getItem('vub_products_rev') || '0'
+    return localStorage.getItem('glam_products_rev') || localStorage.getItem('vub_products_rev') || '0'
   } catch {
     return '0'
   }

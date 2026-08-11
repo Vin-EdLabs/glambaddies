@@ -9,7 +9,23 @@ const { slugify, parsePagination, toCents } = require('../utils/helpers');
 
 const ORDER_STATUSES = ['pending', 'paid', 'shipped', 'delivered', 'cancelled'];
 
-// POST /api/vince-77-00/login
+async function ensureUserPhoneColumn() {
+  await db.query(`
+    ALTER TABLE users
+      ADD COLUMN IF NOT EXISTS phone VARCHAR(40)
+  `);
+  await db.query(`
+    CREATE UNIQUE INDEX IF NOT EXISTS users_phone_unique
+      ON users (phone)
+      WHERE phone IS NOT NULL AND phone <> ''
+  `);
+  await db.query(`
+    ALTER TABLE users
+      ALTER COLUMN email DROP NOT NULL
+  `).catch(() => {});
+}
+
+// POST /api/glam-baddies/login
 exports.login = async (req, res, next) => {
   try {
     const { email, password } = req.body || {};
@@ -39,7 +55,7 @@ exports.login = async (req, res, next) => {
   }
 };
 
-// GET /api/vince-77-00/dashboard
+// GET /api/glam-baddies/dashboard
 exports.dashboard = async (req, res, next) => {
   try {
     const { getPurchasesEnabled } = require('./store.controller');
@@ -59,7 +75,7 @@ exports.dashboard = async (req, res, next) => {
   }
 };
 
-// GET /api/vince-77-00/analytics — chart series for admin analytics page
+// GET /api/glam-baddies/analytics — chart series for admin analytics page
 exports.analytics = async (req, res, next) => {
   try {
     const days = Math.min(Math.max(Number(req.query.days) || 14, 7), 90);
@@ -144,7 +160,7 @@ exports.analytics = async (req, res, next) => {
   }
 };
 
-// GET /api/vince-77-00/settings
+// GET /api/glam-baddies/settings
 exports.getSettings = async (req, res, next) => {
   try {
     const { getSettingsRow, publicSettingsPayload } = require('./store.controller');
@@ -155,7 +171,7 @@ exports.getSettings = async (req, res, next) => {
   }
 };
 
-// PUT /api/vince-77-00/settings { purchases_enabled?: boolean, payment_mode?, keys..., usd_to_ghs_rate? }
+// PUT /api/glam-baddies/settings { purchases_enabled?: boolean, payment_mode?, keys..., usd_to_ghs_rate? }
 exports.updateSettings = async (req, res, next) => {
   try {
     const {
@@ -174,6 +190,18 @@ exports.updateSettings = async (req, res, next) => {
     if (typeof body.purchases_enabled === 'boolean') {
       values.push(body.purchases_enabled);
       updates.push(`purchases_enabled = $${values.length}`);
+    }
+
+    if (body.announcement_text !== undefined) {
+      const text = String(body.announcement_text || '')
+        .replace(/\s+/g, ' ')
+        .trim()
+        .slice(0, 80);
+      if (!text) {
+        throw new ApiError(400, 'Announcement text cannot be empty');
+      }
+      values.push(text);
+      updates.push(`announcement_text = $${values.length}`);
     }
 
     if (body.payment_mode !== undefined) {
@@ -309,7 +337,9 @@ exports.updateSettings = async (req, res, next) => {
     const rateWasUpdated = rawRate !== undefined && rawRate !== null && rawRate !== '';
 
     let message = 'Settings saved';
-    if (typeof body.purchases_enabled === 'boolean' && !touchedPayments && !rateWasUpdated) {
+    if (body.announcement_text !== undefined && !touchedPayments) {
+      message = 'Announcement bar updated';
+    } else if (typeof body.purchases_enabled === 'boolean' && !touchedPayments && !rateWasUpdated) {
       message = payload.purchases_enabled
         ? 'Purchases are now enabled'
         : 'Purchases are now paused. Customers cannot check out.';
@@ -330,7 +360,7 @@ exports.updateSettings = async (req, res, next) => {
   }
 };
 
-// PUT /api/vince-77-00/settings/rate { usd_to_ghs_rate | rate | exchange_rate }
+// PUT /api/glam-baddies/settings/rate { usd_to_ghs_rate | rate | exchange_rate }
 exports.updateExchangeRate = async (req, res, next) => {
   try {
     const {
@@ -450,21 +480,40 @@ function parseProductBody(body, { partial = false } = {}) {
   return fields;
 }
 
-async function insertImages(productId, files) {
+async function insertImages(productId, files, { primaryIndex = null } = {}) {
   const urls = [];
+  if (!files?.length) return urls;
+
+  const chosen =
+    primaryIndex == null || Number.isNaN(Number(primaryIndex))
+      ? null
+      : Math.max(0, Math.min(files.length - 1, Number(primaryIndex)));
+
   for (let i = 0; i < files.length; i++) {
     const url = `/uploads/${files[i].filename}`;
+    const { rows: countRows } = await db.query(
+      'SELECT COUNT(*)::int AS total FROM product_images WHERE product_id = $1',
+      [productId]
+    );
+    const isFirst = countRows[0].total === 0;
+    const isPrimary = chosen != null ? i === chosen : isFirst;
+    if (isPrimary) {
+      await db.query(
+        'UPDATE product_images SET is_primary = FALSE WHERE product_id = $1',
+        [productId]
+      );
+    }
     await db.query(
       `INSERT INTO product_images (product_id, url, is_primary)
-       VALUES ($1, $2, (SELECT COUNT(*) = 0 FROM product_images WHERE product_id = $1))`,
-      [productId, url]
+       VALUES ($1, $2, $3)`,
+      [productId, url, isPrimary]
     );
     urls.push(url);
   }
   return urls;
 }
 
-// GET /api/vince-77-00/products (active by default; ?include_inactive=1 for drafts)
+// GET /api/glam-baddies/products (active by default; ?include_inactive=1 for drafts)
 exports.listProducts = async (req, res, next) => {
   try {
     const { page, limit, offset } = parsePagination(req.query, {
@@ -478,7 +527,7 @@ exports.listProducts = async (req, res, next) => {
     );
     const { rows } = await db.query(
       `SELECT p.*, ROUND(p.price_cents / 100.0, 2) AS price, c.name AS category_name,
-              COALESCE((SELECT json_agg(json_build_object('id', pi.id, 'url', pi.url))
+              COALESCE((SELECT json_agg(json_build_object('id', pi.id, 'url', pi.url, 'is_primary', pi.is_primary) ORDER BY pi.is_primary DESC, pi.id)
                         FROM product_images pi WHERE pi.product_id = p.id), '[]'::json) AS images
        FROM products p LEFT JOIN categories c ON c.id = p.category_id
        ${where}
@@ -500,7 +549,7 @@ exports.listProducts = async (req, res, next) => {
   }
 };
 
-// POST /api/vince-77-00/products  (multipart/form-data, images[] optional)
+// POST /api/glam-baddies/products  (multipart/form-data, images[] optional)
 exports.createProduct = async (req, res, next) => {
   try {
     const fields = parseProductBody(req.body || {});
@@ -521,7 +570,11 @@ exports.createProduct = async (req, res, next) => {
       ]
     );
     const product = rows[0];
-    product.images = await insertImages(product.id, req.files || []);
+    const primaryIndex =
+      req.body?.primary_image_index != null && req.body.primary_image_index !== ''
+        ? Number(req.body.primary_image_index)
+        : null;
+    product.images = await insertImages(product.id, req.files || [], { primaryIndex });
     const { bumpCatalogueRevision } = require('./store.controller');
     await bumpCatalogueRevision();
     res.status(201).json({ product });
@@ -530,7 +583,7 @@ exports.createProduct = async (req, res, next) => {
   }
 };
 
-// PUT /api/vince-77-00/products/:id  (multipart/form-data, images[] appended)
+// PUT /api/glam-baddies/products/:id  (multipart/form-data, images[] appended)
 exports.updateProduct = async (req, res, next) => {
   try {
     const id = Number(req.params.id);
@@ -567,7 +620,13 @@ exports.updateProduct = async (req, res, next) => {
       product = rows[0];
     }
 
-    if (req.files?.length) await insertImages(id, req.files);
+    if (req.files?.length) {
+      const primaryIndex =
+        req.body?.primary_image_index != null && req.body.primary_image_index !== ''
+          ? Number(req.body.primary_image_index)
+          : null;
+      await insertImages(id, req.files, { primaryIndex });
+    }
 
     const images = await db.query(
       'SELECT id, url, is_primary FROM product_images WHERE product_id = $1 ORDER BY id',
@@ -582,7 +641,7 @@ exports.updateProduct = async (req, res, next) => {
   }
 };
 
-// DELETE /api/vince-77-00/products/:id
+// DELETE /api/glam-baddies/products/:id
 // Soft-delete (is_active = false) always, then hard-delete when not in order history.
 exports.deleteProduct = async (req, res, next) => {
   try {
@@ -657,18 +716,90 @@ exports.deleteProduct = async (req, res, next) => {
   }
 };
 
-// DELETE /api/vince-77-00/products/:id/images/:imageId
+// PUT /api/glam-baddies/products/:id/images/:imageId/primary
+exports.setPrimaryImage = async (req, res, next) => {
+  try {
+    const productId = Number(req.params.id);
+    const imageId = Number(req.params.imageId);
+    if (!Number.isInteger(productId) || productId < 1) {
+      throw new ApiError(400, 'Invalid product id');
+    }
+    if (!Number.isInteger(imageId) || imageId < 1) {
+      throw new ApiError(400, 'Invalid image id');
+    }
+
+    const existing = await db.query(
+      'SELECT id FROM product_images WHERE id = $1 AND product_id = $2',
+      [imageId, productId]
+    );
+    if (existing.rows.length === 0) throw new ApiError(404, 'Image not found');
+
+    await db.query(
+      'UPDATE product_images SET is_primary = FALSE WHERE product_id = $1',
+      [productId]
+    );
+    await db.query(
+      'UPDATE product_images SET is_primary = TRUE WHERE id = $1 AND product_id = $2',
+      [imageId, productId]
+    );
+
+    const images = await db.query(
+      `SELECT id, url, is_primary
+       FROM product_images
+       WHERE product_id = $1
+       ORDER BY is_primary DESC, id ASC`,
+      [productId]
+    );
+    const { bumpCatalogueRevision } = require('./store.controller');
+    await bumpCatalogueRevision();
+    res.json({
+      message: 'Main thumbnail updated',
+      images: images.rows,
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
+// DELETE /api/glam-baddies/products/:id/images/:imageId
 exports.deleteProductImage = async (req, res, next) => {
   try {
+    const productId = Number(req.params.id);
+    const imageId = Number(req.params.imageId);
     const { rows } = await db.query(
-      'DELETE FROM product_images WHERE id = $1 AND product_id = $2 RETURNING url',
-      [Number(req.params.imageId), Number(req.params.id)]
+      'DELETE FROM product_images WHERE id = $1 AND product_id = $2 RETURNING url, is_primary',
+      [imageId, productId]
     );
     if (rows.length === 0) throw new ApiError(404, 'Image not found');
     await fs
       .unlink(path.join(UPLOAD_DIR, path.basename(rows[0].url)))
       .catch(() => {});
-    res.json({ deleted: true });
+
+    // Keep one primary image so the storefront always has a main thumb.
+    if (rows[0].is_primary) {
+      await db.query(
+        `UPDATE product_images
+         SET is_primary = TRUE
+         WHERE id = (
+           SELECT id FROM product_images
+           WHERE product_id = $1
+           ORDER BY id ASC
+           LIMIT 1
+         )`,
+        [productId]
+      );
+    }
+
+    const images = await db.query(
+      `SELECT id, url, is_primary
+       FROM product_images
+       WHERE product_id = $1
+       ORDER BY is_primary DESC, id ASC`,
+      [productId]
+    );
+    const { bumpCatalogueRevision } = require('./store.controller');
+    await bumpCatalogueRevision();
+    res.json({ deleted: true, images: images.rows });
   } catch (err) {
     next(err);
   }
@@ -676,7 +807,7 @@ exports.deleteProductImage = async (req, res, next) => {
 
 /* ----------------------------- categories ----------------------------- */
 
-// POST /api/vince-77-00/categories
+// POST /api/glam-baddies/categories
 exports.createCategory = async (req, res, next) => {
   try {
     const { name, description } = req.body || {};
@@ -692,7 +823,7 @@ exports.createCategory = async (req, res, next) => {
   }
 };
 
-// PUT /api/vince-77-00/categories/:id
+// PUT /api/glam-baddies/categories/:id
 exports.updateCategory = async (req, res, next) => {
   try {
     const { name, description } = req.body || {};
@@ -709,7 +840,7 @@ exports.updateCategory = async (req, res, next) => {
   }
 };
 
-// DELETE /api/vince-77-00/categories/:id (products keep existing via ON DELETE SET NULL)
+// DELETE /api/glam-baddies/categories/:id (products keep existing via ON DELETE SET NULL)
 exports.deleteCategory = async (req, res, next) => {
   try {
     const result = await db.query('DELETE FROM categories WHERE id = $1', [
@@ -724,9 +855,10 @@ exports.deleteCategory = async (req, res, next) => {
 
 /* ------------------------------- orders ------------------------------- */
 
-// GET /api/vince-77-00/orders?status=
+// GET /api/glam-baddies/orders?status=
 exports.listOrders = async (req, res, next) => {
   try {
+    await ensureUserPhoneColumn();
     const { page, limit, offset } = parsePagination(req.query, {
       defaultLimit: 20,
     });
@@ -748,9 +880,20 @@ exports.listOrders = async (req, res, next) => {
       `SELECT o.id, o.status, o.currency, o.total_cents,
               ROUND(o.total_cents / 100.0, 2) AS total,
               o.payment_reference, o.paid_at, o.created_at,
+              o.shipping_address,
               COALESCE(u.id, 0) AS user_id,
-              COALESCE(u.name, o.shipping_address->>'guest_name', 'Guest') AS user_name,
-              COALESCE(u.email, o.shipping_address->>'email') AS user_email
+              COALESCE(
+                NULLIF(o.shipping_address->>'full_name', ''),
+                u.name,
+                o.shipping_address->>'guest_name',
+                'Guest'
+              ) AS user_name,
+              COALESCE(
+                NULLIF(o.shipping_address->>'phone', ''),
+                u.phone,
+                u.email,
+                o.shipping_address->>'email'
+              ) AS user_email
        FROM orders o LEFT JOIN users u ON u.id = o.user_id
        ${where}
        ORDER BY o.created_at DESC
@@ -766,9 +909,10 @@ exports.listOrders = async (req, res, next) => {
   }
 };
 
-// GET /api/vince-77-00/orders/:id
+// GET /api/glam-baddies/orders/:id
 exports.getOrder = async (req, res, next) => {
   try {
+    await ensureUserPhoneColumn();
     const id = Number(req.params.id);
     if (!Number.isInteger(id) || id < 1) {
       throw new ApiError(400, 'Invalid order id');
@@ -780,8 +924,18 @@ exports.getOrder = async (req, res, next) => {
               o.shipping_address, o.payment_reference, o.paystack_transaction_id,
               o.paid_at, o.created_at, o.updated_at,
               COALESCE(u.id, 0) AS user_id,
-              COALESCE(u.name, o.shipping_address->>'guest_name', 'Guest') AS user_name,
-              COALESCE(u.email, o.shipping_address->>'email') AS user_email
+              COALESCE(
+                NULLIF(o.shipping_address->>'full_name', ''),
+                u.name,
+                o.shipping_address->>'guest_name',
+                'Guest'
+              ) AS user_name,
+              COALESCE(
+                NULLIF(o.shipping_address->>'phone', ''),
+                u.phone,
+                u.email,
+                o.shipping_address->>'email'
+              ) AS user_email
        FROM orders o LEFT JOIN users u ON u.id = o.user_id
        WHERE o.id = $1`,
       [id]
@@ -823,26 +977,72 @@ exports.getOrder = async (req, res, next) => {
   }
 };
 
-// PUT /api/vince-77-00/orders/:id/status { status }
+// PUT /api/glam-baddies/orders/:id/status { status, cancel_reason? }
 exports.updateOrderStatus = async (req, res, next) => {
   try {
-    const { status } = req.body || {};
+    const { status, cancel_reason: cancelReasonRaw } = req.body || {};
     if (!ORDER_STATUSES.includes(status)) {
       throw new ApiError(400, `status must be one of: ${ORDER_STATUSES.join(', ')}`);
     }
+    const orderId = Number(req.params.id);
+    const current = await db.query(
+      'SELECT id, status, shipping_address FROM orders WHERE id = $1',
+      [orderId]
+    );
+    if (current.rows.length === 0) throw new ApiError(404, 'Order not found');
+    const previousStatus = current.rows[0].status;
+
+    let cancelReason = String(cancelReasonRaw || '').trim();
+    if (status === 'cancelled') {
+      if (cancelReason.length < 3) {
+        throw new ApiError(400, 'A cancellation reason is required');
+      }
+      if (cancelReason.length > 500) {
+        cancelReason = cancelReason.slice(0, 500);
+      }
+      await db.query(
+        `UPDATE orders
+         SET shipping_address = COALESCE(shipping_address, '{}'::jsonb)
+           || jsonb_build_object(
+                'cancel_reason', $2::text,
+                'cancelled_at', $3::text
+              ),
+             updated_at = NOW()
+         WHERE id = $1`,
+        [orderId, cancelReason, new Date().toISOString()]
+      );
+    }
+
     const { rows } = await db.query(
       `UPDATE orders SET status = $1, updated_at = NOW()
-       WHERE id = $2 RETURNING id, status, updated_at`,
-      [status, Number(req.params.id)]
+       WHERE id = $2 RETURNING id, status, updated_at, shipping_address`,
+      [status, orderId]
     );
     if (rows.length === 0) throw new ApiError(404, 'Order not found');
-    res.json({ order: rows[0] });
+
+    if (previousStatus !== status) {
+      let emailResult = { ok: false };
+      try {
+        const { sendStatusUpdateEmail } = require('../services/orderEmails');
+        emailResult = await sendStatusUpdateEmail(orderId);
+      } catch (mailErr) {
+        console.error('[mail] status update email failed:', mailErr.message);
+        emailResult = { ok: false, error: mailErr.message };
+      }
+      return res.json({
+        order: rows[0],
+        email_sent: Boolean(emailResult?.ok),
+        email_error: emailResult?.ok ? null : emailResult?.error || null,
+      });
+    }
+
+    res.json({ order: rows[0], email_sent: false });
   } catch (err) {
     next(err);
   }
 };
 
-// DELETE /api/vince-77-00/orders/:id  (also POST /api/vince-77-00/orders/:id/delete)
+// DELETE /api/glam-baddies/orders/:id  (also POST /api/glam-baddies/orders/:id/delete)
 exports.deleteOrder = async (req, res, next) => {
   try {
     const id = Number(req.params.id);
@@ -860,8 +1060,8 @@ exports.deleteOrder = async (req, res, next) => {
   }
 };
 
-// DELETE /api/vince-77-00/orders — remove every order (items/payments cascade)
-// also POST /api/vince-77-00/orders/clear
+// DELETE /api/glam-baddies/orders — remove every order (items/payments cascade)
+// also POST /api/glam-baddies/orders/clear
 exports.clearOrders = async (req, res, next) => {
   try {
     const { rowCount } = await db.query('DELETE FROM orders');
@@ -876,7 +1076,7 @@ exports.clearOrders = async (req, res, next) => {
   }
 };
 
-// PUT /api/vince-77-00/password { current_password, new_password }
+// PUT /api/glam-baddies/password { current_password, new_password }
 exports.changePassword = async (req, res, next) => {
   try {
     const { current_password, new_password } = req.body || {};
@@ -914,17 +1114,101 @@ exports.changePassword = async (req, res, next) => {
   }
 };
 
+/* -------------------------------- admins ------------------------------ */
+
+// GET /api/glam-baddies/admins
+exports.listAdmins = async (req, res, next) => {
+  try {
+    const { rows } = await db.query(
+      `SELECT id, name, email, created_at
+       FROM admins
+       ORDER BY created_at ASC, id ASC`
+    );
+    res.json({ admins: rows });
+  } catch (err) {
+    next(err);
+  }
+};
+
+// POST /api/glam-baddies/admins { name, email, password }
+exports.createAdmin = async (req, res, next) => {
+  try {
+    const { name, email, password } = req.body || {};
+    const fullName = String(name || '').trim();
+    const cleanEmail = String(email || '').trim().toLowerCase();
+    if (!fullName) throw new ApiError(400, 'Full name is required');
+    if (!cleanEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) {
+      throw new ApiError(400, 'A valid email is required');
+    }
+    if (!password || String(password).length < 8) {
+      throw new ApiError(400, 'Password must be at least 8 characters');
+    }
+
+    const existing = await db.query('SELECT id FROM admins WHERE email = $1', [
+      cleanEmail,
+    ]);
+    if (existing.rows.length > 0) {
+      throw new ApiError(409, 'An admin with this email already exists');
+    }
+
+    const password_hash = await bcrypt.hash(String(password), 10);
+    const { rows } = await db.query(
+      `INSERT INTO admins (name, email, password_hash)
+       VALUES ($1, $2, $3)
+       RETURNING id, name, email, created_at`,
+      [fullName, cleanEmail, password_hash]
+    );
+
+    res.status(201).json({
+      message: 'Admin account created',
+      admin: rows[0],
+    });
+  } catch (err) {
+    if (err.code === '23505') {
+      return next(new ApiError(409, 'An admin with this email already exists'));
+    }
+    next(err);
+  }
+};
+
+// DELETE /api/glam-baddies/admins/:id
+exports.deleteAdmin = async (req, res, next) => {
+  try {
+    const id = Number(req.params.id);
+    const currentId = Number(req.admin?.id || req.admin?.sub);
+    if (!Number.isInteger(id) || id < 1) {
+      throw new ApiError(400, 'Invalid admin id');
+    }
+    if (id === currentId) {
+      throw new ApiError(400, 'You cannot remove your own admin account');
+    }
+
+    const countResult = await db.query('SELECT COUNT(*)::int AS total FROM admins');
+    if (countResult.rows[0].total <= 1) {
+      throw new ApiError(400, 'At least one admin account is required');
+    }
+
+    const { rowCount } = await db.query('DELETE FROM admins WHERE id = $1', [id]);
+    if (!rowCount) throw new ApiError(404, 'Admin not found');
+
+    res.json({ message: 'Admin removed' });
+  } catch (err) {
+    next(err);
+  }
+};
+
 /* -------------------------------- users ------------------------------- */
 
-// GET /api/vince-77-00/users
+// GET /api/glam-baddies/users
 exports.listUsers = async (req, res, next) => {
   try {
+    await ensureUserPhoneColumn();
     const { page, limit, offset } = parsePagination(req.query, {
       defaultLimit: 20,
     });
     const countResult = await db.query('SELECT COUNT(*)::int AS total FROM users');
     const { rows } = await db.query(
-      `SELECT u.id, u.name, u.email, u.created_at,
+      `SELECT u.id, u.name, u.phone, u.email, u.created_at,
               COUNT(o.id)::int AS order_count
        FROM users u LEFT JOIN orders o ON o.user_id = u.id
        GROUP BY u.id
@@ -943,7 +1227,7 @@ exports.listUsers = async (req, res, next) => {
 
 /* --------------------------- private list / newsletter --------------------------- */
 
-// GET /api/vince-77-00/newsletter
+// GET /api/glam-baddies/newsletter
 exports.listNewsletter = async (req, res, next) => {
   try {
     const { page, limit, offset } = parsePagination(req.query, {
@@ -979,7 +1263,7 @@ exports.listNewsletter = async (req, res, next) => {
   }
 };
 
-// DELETE /api/vince-77-00/newsletter/:id
+// DELETE /api/glam-baddies/newsletter/:id
 exports.deleteNewsletter = async (req, res, next) => {
   try {
     const id = Number(req.params.id);

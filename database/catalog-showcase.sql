@@ -1,3 +1,5 @@
+-- DEPRECATED for GlamBaddies — do not run against glambaddies_db.
+-- Multi-category Vublishop showcase. Use database/seed.sql (dresses only).
 -- Showcase catalogue: 3 products each for New arrivals, Fashion, Electronics,
 -- Games, Home & Living, and Beauty. Safe to re-run (skips existing slugs).
 --

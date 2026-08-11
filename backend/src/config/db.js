@@ -1,3 +1,6 @@
+// GlamBaddies DB — separate from Vublishop main DB (glambaddies_db)
+const path = require('path');
+require('dotenv').config({ path: path.join(__dirname, '..', '..', '.env') });
 const { Pool } = require('pg');
 
 // Prefer DATABASE_URL; fall back to the standard PG* environment variables.
@@ -7,7 +10,7 @@ const pool = new Pool(
     : {
         host: process.env.PGHOST || 'localhost',
         port: Number(process.env.PGPORT) || 5432,
-        database: process.env.PGDATABASE || 'vublishop',
+        database: process.env.PGDATABASE || process.env.DB_NAME || 'glambaddies_db',
         user: process.env.PGUSER || 'postgres',
         password: process.env.PGPASSWORD || '',
       }

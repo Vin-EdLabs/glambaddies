@@ -1,3 +1,5 @@
+-- DEPRECATED for GlamBaddies — do not run.
+-- Use database/seed.sql or database/girls-dresses.sql on glambaddies_db.
 -- Production bootstrap: categories, showcase catalogue, food & grocery, newsletter.
 -- Safe to re-run.
 --

@@ -1,0 +1,532 @@
+/* GlamBaddies brand — rose-gold pink accents for light mode */
+:root {
+  --ink: #1a1216;
+  --muted: #7a6570;
+  --cream: #f8ece8;
+  --paper: #fff8f6;
+  --line: #efd5d0;
+  --sage: #c4787a;
+  --admin: #1a1216;
+  --admin-bg: #fff5f2;
+  --pink: #e91e8c;
+  --pink-soft: #ff69b4;
+  --rose: #c4787a;
+  --rose-deep: #b76e79;
+  --blush: #f3e0db;
+}
+
+body {
+  background:
+    radial-gradient(1200px 500px at 10% -10%, rgba(233, 30, 140, 0.08), transparent 55%),
+    radial-gradient(900px 420px at 100% 0%, rgba(196, 120, 122, 0.12), transparent 50%),
+    var(--paper);
+}
+
+.announcement {
+  background: #000000;
+  letter-spacing: 0.14em;
+}
+
+.site-header {
+  background: rgba(255, 248, 246, 0.92);
+  border-bottom: 1px solid rgba(233, 30, 140, 0.12);
+}
+
+.logo {
+  gap: 0.55rem;
+}
+
+.logo img {
+  height: 58px;
+  width: auto;
+  border-radius: 10px;
+  box-shadow: none;
+}
+
+.logo-wordmark {
+  display: inline-block;
+  font-family: 'Playfair Display', Georgia, serif;
+  font-weight: 600;
+  font-size: clamp(1.05rem, 2.2vw, 1.45rem);
+  letter-spacing: 0.08em;
+  color: var(--ink, #1a1a1a);
+  text-transform: none;
+  line-height: 1;
+  background: none;
+  -webkit-background-clip: unset;
+  background-clip: unset;
+}
+
+.site-header .logo:hover,
+.site-header .logo:hover .logo-wordmark,
+footer .logo:hover {
+  opacity: 0.85;
+  color: inherit;
+}
+
+.site-header .logo:hover img,
+footer .logo:hover img {
+  filter: none;
+}
+
+.site-header nav a:hover,
+.site-header nav a.active,
+.header-story:hover,
+.header-story.active {
+  color: #333;
+  opacity: 0.85;
+}
+
+.site-header nav a:after {
+  background: #333;
+}
+
+.header-actions span {
+  background: var(--pink);
+}
+
+.button,
+.admin-button.primary {
+  background: var(--pink);
+  border-color: var(--pink);
+  color: #fff;
+}
+
+.button:hover,
+.admin-button.primary:hover {
+  background: #c41674;
+  border-color: #c41674;
+}
+
+.button.light-button {
+  background: #fff;
+  color: var(--pink);
+  border-color: #fff;
+}
+
+.button.light-button:hover {
+  background: var(--blush);
+  color: var(--pink);
+  border-color: var(--blush);
+}
+
+.eyebrow {
+  color: var(--rose-deep);
+}
+
+.quick-add {
+  color: var(--pink);
+  border-bottom-color: var(--pink);
+}
+
+.badge {
+  background: var(--pink);
+  color: #fff;
+}
+
+.heart {
+  color: var(--pink);
+}
+
+/* Phone format (default / mobile) — do not change below without care */
+.hero-band {
+  width: 100%;
+  background: #f5f0ea;
+  display: flex;
+  justify-content: center;
+}
+
+.hero-section {
+  position: relative !important;
+  background: #f5f0ea !important;
+  width: 100% !important;
+  max-width: 640px !important;
+  margin: 0 auto !important;
+  height: auto !important;
+  min-height: 0 !important;
+  max-height: none !important;
+  aspect-ratio: auto !important;
+  overflow: hidden !important;
+  display: block !important;
+  color: white;
+}
+
+.hero-section:after {
+  display: block !important;
+  content: '' !important;
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+  background: linear-gradient(
+    180deg,
+    rgba(18, 8, 14, 0.05) 0%,
+    rgba(18, 8, 14, 0.12) 48%,
+    rgba(18, 8, 14, 0.55) 100%
+  );
+}
+
+.hero-section > img {
+  width: 100% !important;
+  height: auto !important;
+  max-height: none !important;
+  object-fit: contain !important;
+  object-position: center center !important;
+  background: #f5f0ea;
+  display: block;
+}
+
+.hero-section .hero-copy {
+  position: absolute;
+  z-index: 2;
+  left: 1.25rem;
+  right: 1.25rem;
+  top: auto !important;
+  bottom: 5% !important;
+  transform: none !important;
+  max-width: none;
+  text-align: left;
+  width: auto;
+}
+
+.hero-section .hero-brand {
+  display: block;
+  height: 52px;
+  width: auto;
+  margin-bottom: 0.65rem;
+  border-radius: 10px;
+  background: transparent;
+  padding: 0;
+  filter: drop-shadow(0 6px 16px rgba(0, 0, 0, 0.28));
+}
+
+.hero-section .hero-copy h1 {
+  display: block;
+  font-size: clamp(2.1rem, 8vw, 2.85rem) !important;
+  margin: 0.35rem 0 0.55rem;
+  line-height: 1.05;
+  text-shadow: 0 2px 18px rgba(0, 0, 0, 0.35);
+}
+
+.hero-section .hero-copy p {
+  display: block;
+  max-width: 90%;
+  margin-bottom: 0.85rem;
+  font-size: 0.92rem;
+  color: #f4f0ea;
+  text-shadow: 0 1px 10px rgba(0, 0, 0, 0.35);
+}
+
+.hero-section .light-button {
+  margin: 0;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
+}
+
+@media (max-width: 767px) {
+  .hero-section {
+    max-width: 100% !important;
+    width: 100% !important;
+  }
+
+  .hero-section .hero-copy {
+    left: 1.15rem !important;
+    right: 1.15rem !important;
+    bottom: 5% !important;
+  }
+
+  .hero-section .hero-brand {
+    height: 48px;
+  }
+
+  .hero-section .hero-copy p {
+    font-size: 0.88rem;
+    max-width: 92%;
+  }
+}
+
+/* Tablet + desktop: full artwork visible (contain), cream letterbox — mobile untouched */
+@media (min-width: 768px) {
+  .hero-band {
+    display: block;
+    width: 100%;
+    max-width: none;
+    background: #f2ede8;
+  }
+
+  .hero-section {
+    position: relative !important;
+    width: 100% !important;
+    max-width: none !important;
+    margin: 0 !important;
+    height: 100vh !important;
+    min-height: 560px !important;
+    max-height: none !important;
+    overflow: hidden !important;
+    background: #f2ede8 !important;
+  }
+
+  .hero-section:after {
+    background: linear-gradient(
+      to right,
+      rgba(0, 0, 0, 0.55) 0%,
+      rgba(0, 0, 0, 0) 50%
+    ) !important;
+  }
+
+  .hero-section > img {
+    position: absolute !important;
+    inset: 0 !important;
+    width: 100% !important;
+    height: 100% !important;
+    object-fit: contain !important;
+    object-position: center center !important;
+    background: #f2ede8 !important;
+  }
+
+  .hero-section .hero-copy {
+    left: 5vw !important;
+    right: auto !important;
+    top: 42% !important;
+    bottom: auto !important;
+    transform: translateY(-50%) !important;
+    max-width: 440px;
+    width: min(440px, 88vw);
+  }
+
+  .hero-section .hero-brand {
+    height: 64px;
+  }
+
+  .hero-section .hero-copy h1 {
+    font-size: clamp(2.8rem, 5vw, 4rem) !important;
+    margin: 0.5rem 0 0.85rem;
+  }
+
+  .hero-section .hero-copy p {
+    max-width: 400px;
+    font-size: 1rem;
+    margin-bottom: 1.35rem;
+    color: #f4f0ea;
+  }
+
+  .hero-section .light-button {
+    background: transparent;
+    color: #fff;
+    border: 1px solid #fff;
+  }
+
+  .hero-section .light-button:hover {
+    background: #fff;
+    color: var(--pink, #e91e8c);
+    border-color: #fff;
+  }
+}
+
+@media (min-width: 1024px) {
+  .hero-section .hero-copy {
+    left: 80px !important;
+    top: 40% !important;
+    bottom: auto !important;
+    transform: translateY(-50%) !important;
+    max-width: 520px;
+  }
+
+  .hero-section .hero-copy h1 {
+    font-size: 4rem !important;
+  }
+
+  .hero-section .hero-brand {
+    height: 72px;
+  }
+}
+
+.hero-brand {
+  height: 72px;
+  width: auto;
+  border-radius: 14px;
+  background: rgba(0, 0, 0, 0.25);
+  padding: 0.35rem 0.55rem;
+  filter: drop-shadow(0 10px 28px rgba(233, 30, 140, 0.35));
+}
+
+.hero-copy h1 em {
+  color: #ffb6d9;
+  font-style: italic;
+}
+
+.hero-copy p {
+  color: #f8e8ef;
+}
+
+.section-head > a,
+.editorial-grid div > span,
+.manifesto > a {
+  color: var(--pink);
+}
+
+.editorial-grid > a:after {
+  background: linear-gradient(transparent 40%, rgba(26, 18, 22, 0.7) 100%);
+}
+
+.editorial-grid .eyebrow {
+  color: #ffb6d9;
+}
+
+.manifesto {
+  background:
+    radial-gradient(600px 280px at 50% 0%, rgba(233, 30, 140, 0.1), transparent 70%),
+    var(--cream);
+}
+
+.benefits svg {
+  color: var(--pink);
+}
+
+footer {
+  background: #140e12;
+  border-top: 3px solid var(--pink);
+}
+
+.logo.light img {
+  height: 88px;
+  border-radius: 12px;
+  box-shadow: none;
+}
+
+footer a:hover {
+  color: #ddd;
+}
+
+footer form {
+  border-bottom-color: rgba(233, 30, 140, 0.45);
+}
+
+footer form button {
+  color: var(--pink-soft);
+}
+
+.footer-social {
+  margin-top: 1.1rem;
+  display: grid;
+  gap: 0.75rem;
+}
+
+.footer-social-label {
+  margin: 0;
+  font-size: 0.68rem !important;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.55) !important;
+}
+
+.footer-social-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.55rem;
+}
+
+.footer-social-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.55rem 0.8rem;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.04);
+  color: #f4eef1 !important;
+  font-size: 0.72rem !important;
+  letter-spacing: 0.04em;
+  transition: background 0.2s ease, border-color 0.2s ease, transform 0.2s ease;
+}
+
+.footer-social-link svg {
+  width: 15px;
+  height: 15px;
+  flex-shrink: 0;
+}
+
+.footer-social-link:hover {
+  transform: translateY(-1px);
+  border-color: rgba(233, 30, 140, 0.55);
+  background: rgba(233, 30, 140, 0.16);
+  color: #fff !important;
+}
+
+.footer-social-link.whatsapp:hover {
+  border-color: rgba(37, 211, 102, 0.55);
+  background: rgba(37, 211, 102, 0.14);
+}
+
+.footer-social-link.snapchat:hover {
+  border-color: rgba(255, 252, 0, 0.5);
+  background: rgba(255, 252, 0, 0.12);
+  color: #fff !important;
+}
+
+.footer-social-link.is-pending {
+  opacity: 0.45;
+  cursor: default;
+  pointer-events: none;
+}
+
+.footer-phone {
+  display: inline-block;
+  margin-top: 0.15rem;
+  color: #ffb6d9 !important;
+  font-size: 0.86rem !important;
+  letter-spacing: 0.04em;
+  font-weight: 600;
+}
+
+.footer-phone:hover {
+  color: #fff !important;
+}
+
+.size-grid button.selected {
+  background: var(--pink);
+  border-color: var(--pink);
+  color: #fff;
+}
+
+input:focus,
+select:focus,
+textarea:focus {
+  border-color: var(--pink) !important;
+  outline: 1px solid rgba(233, 30, 140, 0.35);
+}
+
+.theme-toggle {
+  border-color: rgba(233, 30, 140, 0.35);
+  color: var(--pink);
+}
+
+.theme-toggle:hover {
+  background: var(--blush);
+  border-color: var(--pink);
+}
+
+.filter-group input {
+  accent-color: var(--pink);
+}
+
+.admin-button.primary {
+  background: var(--pink);
+  border-color: var(--pink);
+}
+
+.stat-card {
+  border-color: rgba(233, 30, 140, 0.22);
+}
+
+.admin-shell > aside nav a.active {
+  box-shadow: inset 3px 0 0 var(--pink);
+}
+
+@media (max-width: 800px) {
+  .logo img {
+    height: 46px;
+  }
+  .hero-brand {
+    height: 72px;
+  }
+}

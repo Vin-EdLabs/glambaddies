@@ -8,7 +8,7 @@ const { Client } = require('pg');
     port: 5433,
     user: 'postgres',
     password: 'password',
-    database: 'vublishop',
+    database: process.env.DB_NAME || 'glambaddies_db',
   });
   await c.connect();
   const sql = fs.readFileSync(path.join(__dirname, '../../database/guest-orders.sql'), 'utf8');
