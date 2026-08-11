@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { Link, Navigate, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import toast from 'react-hot-toast'
 import { ArrowRight, BarChart3, Box, Check, ChevronDown, Copy, Eye, EyeOff, Heart, LayoutDashboard, LogOut, Mail, Menu, Minus, Moon, Package, Plus, Search, Settings, ShoppingBag, Sun, Tag, Trash2, User, Users, X } from 'lucide-react'
@@ -276,29 +277,31 @@ export function StoreLayout() {
     }
   }
   return <div className="store">
-    <div className="announcement">{announcement}</div>
-    <header className="site-header">
-      <button className="mobile-menu" onClick={() => setMenu(!menu)}><Menu /></button>
-      <Link className="logo" to="/" aria-label="GlamBaddies home">
-        <img src="/logo.png" alt="" />
-        <span className="logo-wordmark">GlamBaddies</span>
-      </Link>
-      <nav className={menu ? 'open' : ''}>
-        {navLinks.map((link) => (
-          <Link
-            key={link.to}
-            to={link.to}
-            className={link.isActive ? 'active' : undefined}
-            onClick={() => setMenu(false)}
-          >
-            {link.label}
-          </Link>
-        ))}
-        <Link className="mobile-story" to="/about" onClick={() => setMenu(false)}>Our story</Link>
-        <Link className="mobile-story" to="/track-order" onClick={() => setMenu(false)}>Track order</Link>
-      </nav>
-      <div className="header-actions"><Link className={`header-story${location.pathname === '/about' ? ' active' : ''}`} to="/about">Our story</Link><Link className={`header-story${location.pathname === '/track-order' ? ' active' : ''}`} to="/track-order">Track order</Link><button type="button" className="theme-toggle header-theme" onClick={toggleTheme} aria-label={isDark ? 'Switch to light mode' : 'Switch to dark mode'}>{isDark ? <Sun size={18} /> : <Moon size={18} />}</button><Link className="header-search" to="/shop" aria-label="Search"><Search /></Link><Link to={customer ? '/account' : '/login'} aria-label="Account"><User /></Link><button onClick={() => setIsOpen(true)} aria-label="Bag"><ShoppingBag /><span>{count}</span></button></div>
-    </header>
+    <div className="store-top">
+      <div className="announcement">{announcement}</div>
+      <header className="site-header">
+        <button className="mobile-menu" onClick={() => setMenu(!menu)}><Menu /></button>
+        <Link className="logo" to="/" aria-label="GlamBaddies home">
+          <img src="/logo.png" alt="" />
+          <span className="logo-wordmark">GlamBaddies</span>
+        </Link>
+        <nav className={menu ? 'open' : ''}>
+          {navLinks.map((link) => (
+            <Link
+              key={link.to}
+              to={link.to}
+              className={link.isActive ? 'active' : undefined}
+              onClick={() => setMenu(false)}
+            >
+              {link.label}
+            </Link>
+          ))}
+          <Link className="mobile-story" to="/about" onClick={() => setMenu(false)}>Our story</Link>
+          <Link className="mobile-story" to="/track-order" onClick={() => setMenu(false)}>Track order</Link>
+        </nav>
+        <div className="header-actions"><Link className={`header-story${location.pathname === '/about' ? ' active' : ''}`} to="/about">Our story</Link><Link className={`header-story${location.pathname === '/track-order' ? ' active' : ''}`} to="/track-order">Track order</Link><button type="button" className="theme-toggle header-theme" onClick={toggleTheme} aria-label={isDark ? 'Switch to light mode' : 'Switch to dark mode'}>{isDark ? <Sun size={18} /> : <Moon size={18} />}</button><Link className="header-search" to="/shop" aria-label="Search"><Search /></Link><Link to={customer ? '/account' : '/login'} aria-label="Account"><User /></Link><button onClick={() => setIsOpen(true)} aria-label="Bag"><ShoppingBag /><span>{count}</span></button></div>
+      </header>
+    </div>
     <main key={`${location.pathname}${location.search}`}><Outlet /></main>
     <footer>
       <div>
@@ -366,14 +369,14 @@ export function StoreLayout() {
 const adminNav = [
   { label: 'Dashboard', to: ADMIN_PATH, icon: LayoutDashboard, end: true },
   { label: 'Products', to: `${ADMIN_PATH}/products`, icon: Box },
+  { label: 'Categories', to: `${ADMIN_PATH}/categories`, icon: Tag },
   { label: 'Orders', to: `${ADMIN_PATH}/orders`, icon: Package },
   { label: 'Customers', to: `${ADMIN_PATH}/customers`, icon: Users },
-  { label: 'Promotions', to: `${ADMIN_PATH}/promotions`, icon: Mail },
   { label: 'Settings', to: `${ADMIN_PATH}/settings`, icon: Settings },
 ]
 
 const adminSecondaryNav = [
-  { label: 'Categories', to: `${ADMIN_PATH}/categories`, icon: Tag },
+  { label: 'Promotions', to: `${ADMIN_PATH}/promotions`, icon: Mail },
   { label: 'Analytics', to: `${ADMIN_PATH}/analytics`, icon: BarChart3 },
 ]
 
@@ -383,10 +386,25 @@ function adminInitials(name = 'A') {
 
 export function AdminLayout() {
   const [open, setOpen] = useState(false)
+  const [profileOpen, setProfileOpen] = useState(false)
   const { admin, logout } = useAuth()
   const { isDark, toggleTheme } = useTheme()
   const navigate = useNavigate()
   const location = useLocation()
+
+  useEffect(() => {
+    setProfileOpen(false)
+  }, [location.pathname])
+
+  useEffect(() => {
+    if (!profileOpen) return undefined
+    const onKeyDown = (event) => {
+      if (event.key === 'Escape') setProfileOpen(false)
+    }
+    document.addEventListener('keydown', onKeyDown)
+    return () => document.removeEventListener('keydown', onKeyDown)
+  }, [profileOpen])
+
   if (!admin || !(localStorage.getItem('glam_admin_token') || localStorage.getItem('vub_admin_token'))) {
     return <Navigate to={`${ADMIN_PATH}/login`} replace />
   }
@@ -398,6 +416,39 @@ export function AdminLayout() {
   const crumbLabel = crumbs.length
     ? crumbs.map((part) => part.replace(/-/g, ' ')).join(' / ')
     : 'Dashboard'
+
+  const signOut = () => {
+    setProfileOpen(false)
+    setOpen(false)
+    logout('admin')
+    navigate(`${ADMIN_PATH}/login`)
+  }
+
+  const profileMenu = profileOpen
+    ? createPortal(
+        <div className="admin-profile-popover" role="presentation">
+          <button
+            type="button"
+            className="admin-profile-scrim"
+            aria-label="Close profile menu"
+            onClick={() => setProfileOpen(false)}
+          />
+          <div className="admin-profile-menu" role="menu">
+            <div className="admin-profile-menu-head">
+              <span>{adminInitials(admin.name)}</span>
+              <div>
+                <strong>{admin.name}</strong>
+                <small>{admin.email || 'Administrator'}</small>
+              </div>
+            </div>
+            <button type="button" role="menuitem" onClick={signOut}>
+              <LogOut size={16} /> Sign out
+            </button>
+          </div>
+        </div>,
+        document.body,
+      )
+    : null
 
   return (
     <div className={`admin-shell${open ? ' menu-open' : ''}`}>
@@ -421,10 +472,10 @@ export function AdminLayout() {
               <Icon />{label}
             </NavLink>
           ))}
+          <button className="admin-logout" type="button" onClick={signOut}>
+            <LogOut />Sign out
+          </button>
         </nav>
-        <button className="admin-logout" type="button" onClick={() => { logout('admin'); navigate(`${ADMIN_PATH}/login`) }}>
-          <LogOut />Sign out
-        </button>
       </aside>
       <section className="admin-main">
         <header>
@@ -438,11 +489,29 @@ export function AdminLayout() {
             <button type="button" className="theme-toggle" onClick={toggleTheme} aria-label={isDark ? 'Switch to light mode' : 'Switch to dark mode'}>
               {isDark ? <Sun size={18} /> : <Moon size={18} />}
             </button>
-            <span>{adminInitials(admin.name)}</span>
-            <div><strong>{admin.name}</strong><small>Administrator</small></div>
-            <ChevronDown />
+            <div className={`admin-profile${profileOpen ? ' open' : ''}`}>
+              <button
+                type="button"
+                className="admin-profile-trigger"
+                aria-haspopup="menu"
+                aria-expanded={profileOpen}
+                onClick={(event) => {
+                  event.preventDefault()
+                  event.stopPropagation()
+                  setProfileOpen((value) => !value)
+                }}
+              >
+                <span className="admin-profile-avatar">{adminInitials(admin.name)}</span>
+                <div className="admin-profile-meta">
+                  <strong>{admin.name}</strong>
+                  <small>Administrator</small>
+                </div>
+                <ChevronDown size={16} className="admin-profile-caret" />
+              </button>
+            </div>
           </div>
         </header>
+        {profileMenu}
         <div className="admin-breadcrumbs" aria-label="Breadcrumb">
           <Link to={ADMIN_PATH}>Admin</Link>
           <span>/</span>

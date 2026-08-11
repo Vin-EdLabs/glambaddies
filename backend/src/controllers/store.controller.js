@@ -152,6 +152,10 @@ async function ensureSettings() {
     ALTER TABLE store_settings
       ADD COLUMN IF NOT EXISTS announcement_text VARCHAR(120) NOT NULL DEFAULT 'Shop · Slay · Shine'
   `);
+  await db.query(`
+    ALTER TABLE store_settings
+      ADD COLUMN IF NOT EXISTS homepage_features JSONB NOT NULL DEFAULT '[]'::jsonb
+  `);
 
   await db.query(`
     INSERT INTO store_settings (id, purchases_enabled)
@@ -243,6 +247,66 @@ function maskKey(value) {
   return `${raw.slice(0, 7)}${'•'.repeat(Math.min(24, raw.length - 11))}${raw.slice(-4)}`;
 }
 
+const DEFAULT_HOMEPAGE_FEATURES = [
+  {
+    id: 'slot-1',
+    category_slug: 'casual-dresses',
+    eyebrow: 'Casual',
+    title: 'Everyday dresses',
+    image_url: '/edit-casual.jpg',
+  },
+  {
+    id: 'slot-2',
+    category_slug: 'party-dresses',
+    eyebrow: 'Party',
+    title: 'Celebration looks',
+    image_url: '/edit-party.jpg',
+  },
+  {
+    id: 'slot-3',
+    category_slug: 'school-dresses',
+    eyebrow: 'School',
+    title: 'Smart day dresses',
+    image_url: '/edit-school.jpg',
+  },
+];
+
+function normalizeHomepageFeatures(raw) {
+  let list = raw;
+  if (typeof list === 'string') {
+    try {
+      list = JSON.parse(list);
+    } catch {
+      list = [];
+    }
+  }
+  if (!Array.isArray(list) || list.length === 0) {
+    return DEFAULT_HOMEPAGE_FEATURES.map((item) => ({ ...item }));
+  }
+
+  const normalized = [0, 1, 2].map((index) => {
+    const fallback = DEFAULT_HOMEPAGE_FEATURES[index];
+    const item = list[index] && typeof list[index] === 'object' ? list[index] : {};
+    const categorySlug = String(item.category_slug || fallback.category_slug)
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9-]+/g, '-')
+      .replace(/^-+|-+$/g, '')
+      .slice(0, 80);
+    return {
+      id: String(item.id || fallback.id),
+      category_slug: categorySlug || fallback.category_slug,
+      eyebrow: String(item.eyebrow || fallback.eyebrow).trim().slice(0, 40) || fallback.eyebrow,
+      title: String(item.title || fallback.title).trim().slice(0, 80) || fallback.title,
+      image_url:
+        String(item.image_url || fallback.image_url).trim().slice(0, 500) ||
+        fallback.image_url,
+    };
+  });
+
+  return normalized;
+}
+
 function publicSettingsPayload(row) {
   const rate = Number(row.usd_to_ghs_rate);
   return {
@@ -254,8 +318,20 @@ function publicSettingsPayload(row) {
     paystack_live_secret_key: row.paystack_live_secret_key || '',
     usd_to_ghs_rate: Number.isFinite(rate) && rate > 0 ? rate : 15.5,
     announcement_text: String(row.announcement_text || 'Shop · Slay · Shine').slice(0, 120),
+    homepage_features: normalizeHomepageFeatures(row.homepage_features),
     updated_at: row.updated_at,
   };
+}
+
+async function publicSettingsPayloadAsync(row) {
+  const payload = publicSettingsPayload(row);
+  try {
+    const { listHomepageFeatures } = require('../services/categoriesHome');
+    payload.homepage_features = await listHomepageFeatures();
+  } catch {
+    // keep legacy normalize fallback
+  }
+  return payload;
 }
 
 async function getUsdToGhsRate() {
@@ -296,6 +372,8 @@ exports.getStatus = async (req, res, next) => {
     const payment = await getPaymentConfig();
     const catalogue_revision = await getCatalogueRevision();
     const settings = await getSettingsRow();
+    const { listHomepageFeatures } = require('../services/categoriesHome');
+    const homepage_features = await listHomepageFeatures();
     res.set({
       'Cache-Control': 'no-store, no-cache, must-revalidate, private',
       Pragma: 'no-cache',
@@ -307,6 +385,7 @@ exports.getStatus = async (req, res, next) => {
       paystack_public_key: payment.public_key || null,
       catalogue_revision,
       announcement_text: String(settings?.announcement_text || 'Shop · Slay · Shine').slice(0, 120),
+      homepage_features,
       message: purchases_enabled
         ? 'Store is open for purchases'
         : 'Item unavailable. Please try again later.',
@@ -362,6 +441,9 @@ exports.getCatalogueRevision = getCatalogueRevision;
 exports.ensureSettings = ensureSettings;
 exports.getSettingsRow = getSettingsRow;
 exports.publicSettingsPayload = publicSettingsPayload;
+exports.publicSettingsPayloadAsync = publicSettingsPayloadAsync;
+exports.normalizeHomepageFeatures = normalizeHomepageFeatures;
+exports.DEFAULT_HOMEPAGE_FEATURES = DEFAULT_HOMEPAGE_FEATURES;
 exports.maskKey = maskKey;
 exports.verifyPaystackMode = verifyPaystackMode;
 exports.keyLooksLike = keyLooksLike;

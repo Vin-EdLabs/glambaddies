@@ -42,6 +42,10 @@ html[data-theme="dark"] .site-header {
   color: #ffffff;
 }
 
+html[data-theme="dark"] .store-top {
+  background: #0d0d0d;
+}
+
 html[data-theme="dark"] .logo-wordmark {
   background: none;
   -webkit-background-clip: unset;
@@ -233,9 +237,20 @@ html[data-theme="dark"] .admin-shell > aside nav a:hover {
 }
 
 html[data-theme="dark"] .admin-main > header {
-  background: #111111;
+  background: rgba(17, 17, 17, 0.96);
   border-bottom-color: #2e2e2e;
   color: #ffffff;
+}
+
+html[data-theme="dark"] .homepage-feature-caption {
+  background: linear-gradient(transparent, rgba(0, 0, 0, 0.82));
+}
+
+html[data-theme="dark"] .category-home-card input,
+html[data-theme="dark"] .homepage-feature-upload {
+  background: #161616;
+  border-color: #2e2e2e;
+  color: #fff;
 }
 
 html[data-theme="dark"] .admin-search {
@@ -518,6 +533,35 @@ html[data-theme="dark"] .admin-user small {
   color: #f0f0f0;
 }
 
+html[data-theme="dark"] .admin-profile-trigger:hover,
+html[data-theme="dark"] .admin-profile.open .admin-profile-trigger {
+  background: #1a1a1a;
+  border-color: #2e2e2e;
+}
+
+html[data-theme="dark"] .admin-profile-scrim {
+  background: rgba(0, 0, 0, 0.45);
+}
+
+html[data-theme="dark"] .admin-profile-menu {
+  background: #151515;
+  border-color: #2e2e2e;
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.45);
+}
+
+html[data-theme="dark"] .admin-profile-menu-head {
+  border-bottom-color: #2e2e2e;
+}
+
+html[data-theme="dark"] .admin-profile-menu button {
+  color: #e8e8e8;
+}
+
+html[data-theme="dark"] .admin-profile-menu button:hover {
+  background: rgba(233, 30, 140, 0.14);
+  color: #ff69b4;
+}
+
 html[data-theme="dark"] .theme-toggle {
   color: #f0f0f0;
   border-color: #444;
@@ -538,6 +582,27 @@ html[data-theme="dark"] .upload-area {
   background: #1a1a1a !important;
   border-color: #444 !important;
   color: #f0f0f0;
+}
+
+html[data-theme="dark"] .upload-area b,
+html[data-theme="dark"] .homepage-feature-upload-copy b {
+  color: #fff;
+}
+
+html[data-theme="dark"] .upload-area-icon,
+html[data-theme="dark"] .homepage-feature-upload-icon {
+  background: rgba(233, 30, 140, 0.16);
+}
+
+html[data-theme="dark"] .product-mobile-card {
+  background: #151515;
+  border-color: #2e2e2e;
+}
+
+html[data-theme="dark"] .product-mobile-main p,
+html[data-theme="dark"] .product-mobile-meta span,
+html[data-theme="dark"] .homepage-feature-upload-copy small {
+  color: #a3a3a3;
 }
 
 html[data-theme="dark"] .admin-toolbar label,

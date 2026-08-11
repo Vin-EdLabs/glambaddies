@@ -163,9 +163,9 @@ exports.analytics = async (req, res, next) => {
 // GET /api/glam-baddies/settings
 exports.getSettings = async (req, res, next) => {
   try {
-    const { getSettingsRow, publicSettingsPayload } = require('./store.controller');
+    const { getSettingsRow, publicSettingsPayloadAsync } = require('./store.controller');
     const row = await getSettingsRow();
-    res.json(publicSettingsPayload(row));
+    res.json(await publicSettingsPayloadAsync(row));
   } catch (err) {
     next(err);
   }
@@ -177,7 +177,7 @@ exports.updateSettings = async (req, res, next) => {
     const {
       ensureSettings,
       getSettingsRow,
-      publicSettingsPayload,
+      publicSettingsPayloadAsync,
       verifyPaystackMode,
     } = require('./store.controller');
     await ensureSettings();
@@ -202,6 +202,45 @@ exports.updateSettings = async (req, res, next) => {
       }
       values.push(text);
       updates.push(`announcement_text = $${values.length}`);
+    }
+
+    if (body.homepage_features !== undefined) {
+      const {
+        ensureCategoryHomeColumns,
+        defaultHomeFields,
+      } = require('../services/categoriesHome');
+      await ensureCategoryHomeColumns();
+      const features = Array.isArray(body.homepage_features) ? body.homepage_features : [];
+      for (const item of features) {
+        if (!item || typeof item !== 'object') continue;
+        const categoryId = Number(item.category_id);
+        const slug = String(item.category_slug || '').trim().toLowerCase();
+        if (!Number.isInteger(categoryId) && !slug) continue;
+        const { rows: existing } = await db.query(
+          Number.isInteger(categoryId) && categoryId > 0
+            ? `SELECT id, name, slug FROM categories WHERE id = $1`
+            : `SELECT id, name, slug FROM categories WHERE slug = $1`,
+          [Number.isInteger(categoryId) && categoryId > 0 ? categoryId : slug]
+        );
+        if (!existing[0]) continue;
+        const defaults = defaultHomeFields(existing[0].name, existing[0].slug);
+        await db.query(
+          `UPDATE categories
+           SET home_eyebrow = $2,
+               home_title = $3,
+               home_image_url = $4
+           WHERE id = $1`,
+          [
+            existing[0].id,
+            String(item.eyebrow || defaults.home_eyebrow).trim().slice(0, 40) || defaults.home_eyebrow,
+            String(item.title || defaults.home_title).trim().slice(0, 80) || defaults.home_title,
+            String(item.image_url || defaults.home_image_url).trim().slice(0, 500) || defaults.home_image_url,
+          ]
+        );
+      }
+      // Keep a mirror in settings for older code paths.
+      values.push(JSON.stringify(features));
+      updates.push(`homepage_features = $${values.length}::jsonb`);
     }
 
     if (body.payment_mode !== undefined) {
@@ -333,11 +372,13 @@ exports.updateSettings = async (req, res, next) => {
       values
     );
 
-    const payload = publicSettingsPayload(rows[0]);
+    const payload = await publicSettingsPayloadAsync(rows[0]);
     const rateWasUpdated = rawRate !== undefined && rawRate !== null && rawRate !== '';
 
     let message = 'Settings saved';
-    if (body.announcement_text !== undefined && !touchedPayments) {
+    if (body.homepage_features !== undefined && !touchedPayments) {
+      message = 'Homepage category tiles updated';
+    } else if (body.announcement_text !== undefined && !touchedPayments) {
       message = 'Announcement bar updated';
     } else if (typeof body.purchases_enabled === 'boolean' && !touchedPayments && !rateWasUpdated) {
       message = payload.purchases_enabled
@@ -354,6 +395,71 @@ exports.updateSettings = async (req, res, next) => {
       message,
       payment_verified: Boolean(verification?.verified),
       live_confirmed: payload.payment_mode === 'live' && Boolean(verification?.verified),
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
+// POST /api/glam-baddies/settings/homepage-feature-image
+// Legacy: prefers category_id / category_slug; falls back to slot index.
+exports.uploadHomepageFeatureImage = async (req, res, next) => {
+  try {
+    const {
+      ensureSettings,
+      publicSettingsPayloadAsync,
+    } = require('./store.controller');
+    const {
+      ensureCategoryHomeColumns,
+      listHomepageFeatures,
+      mapCategoryHome,
+    } = require('../services/categoriesHome');
+    await ensureSettings();
+    await ensureCategoryHomeColumns();
+
+    if (!req.file) {
+      throw new ApiError(400, 'Choose an image to upload');
+    }
+
+    const imageUrl = `/uploads/${req.file.filename}`;
+    const categoryId = Number(req.body?.category_id);
+    const categorySlug = String(req.body?.category_slug || '').trim().toLowerCase();
+    const slot = Number(req.body?.slot);
+
+    let target = null;
+    if (Number.isInteger(categoryId) && categoryId > 0) {
+      const { rows } = await db.query('SELECT * FROM categories WHERE id = $1', [categoryId]);
+      target = rows[0] || null;
+    } else if (categorySlug) {
+      const { rows } = await db.query('SELECT * FROM categories WHERE slug = $1', [categorySlug]);
+      target = rows[0] || null;
+    } else if (Number.isInteger(slot) && slot >= 0) {
+      const features = await listHomepageFeatures();
+      const feature = features[slot];
+      if (feature?.category_id) {
+        const { rows } = await db.query('SELECT * FROM categories WHERE id = $1', [feature.category_id]);
+        target = rows[0] || null;
+      }
+    }
+
+    if (!target) {
+      throw new ApiError(400, 'Choose a valid category for this homepage image');
+    }
+
+    const { rows } = await db.query(
+      `UPDATE categories
+       SET home_image_url = $1
+       WHERE id = $2
+       RETURNING *`,
+      [imageUrl, target.id]
+    );
+
+    const settings = await require('./store.controller').getSettingsRow();
+    res.json({
+      ...(await publicSettingsPayloadAsync(settings)),
+      category: mapCategoryHome(rows[0]),
+      message: 'Homepage tile image updated',
+      uploaded_url: imageUrl,
     });
   } catch (err) {
     next(err);
@@ -780,18 +886,68 @@ exports.deleteProductImage = async (req, res, next) => {
 
 /* ----------------------------- categories ----------------------------- */
 
+// GET /api/glam-baddies/categories
+exports.listCategories = async (req, res, next) => {
+  try {
+    const {
+      ensureCategoryHomeColumns,
+      mapCategoryHome,
+    } = require('../services/categoriesHome');
+    await ensureCategoryHomeColumns();
+    const { rows } = await db.query(
+      `SELECT c.id, c.name, c.slug, c.description, c.created_at,
+              c.home_image_url, c.home_eyebrow, c.home_title,
+              COUNT(p.id)::int AS product_count
+       FROM categories c
+       LEFT JOIN products p ON p.category_id = c.id
+       GROUP BY c.id
+       ORDER BY
+         CASE c.slug
+           WHEN 'casual-dresses' THEN 1
+           WHEN 'party-dresses' THEN 2
+           WHEN 'school-dresses' THEN 3
+           ELSE 9
+         END,
+         c.name ASC`
+    );
+    res.json({ categories: rows.map(mapCategoryHome) });
+  } catch (err) {
+    next(err);
+  }
+};
+
 // POST /api/glam-baddies/categories
 exports.createCategory = async (req, res, next) => {
   try {
-    const { name, description } = req.body || {};
+    const {
+      ensureCategoryHomeColumns,
+      defaultHomeFields,
+      mapCategoryHome,
+    } = require('../services/categoriesHome');
+    await ensureCategoryHomeColumns();
+
+    const { name, description, home_eyebrow, home_title, home_image_url } = req.body || {};
     if (!name || !String(name).trim()) throw new ApiError(400, 'name is required');
+    const cleanName = String(name).trim();
+    const slug = slugify(cleanName);
+    const defaults = defaultHomeFields(cleanName, slug);
     const { rows } = await db.query(
-      `INSERT INTO categories (name, slug, description)
-       VALUES ($1, $2, $3) RETURNING *`,
-      [String(name).trim(), slugify(name), description || null]
+      `INSERT INTO categories (name, slug, description, home_image_url, home_eyebrow, home_title)
+       VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
+      [
+        cleanName,
+        slug,
+        description || null,
+        String(home_image_url || defaults.home_image_url).trim().slice(0, 500) || defaults.home_image_url,
+        String(home_eyebrow || defaults.home_eyebrow).trim().slice(0, 40) || defaults.home_eyebrow,
+        String(home_title || defaults.home_title).trim().slice(0, 80) || defaults.home_title,
+      ]
     );
-    res.status(201).json({ category: rows[0] });
+    res.status(201).json({ category: mapCategoryHome(rows[0]) });
   } catch (err) {
+    if (err && err.code === '23505') {
+      return next(new ApiError(409, 'A category with that name already exists'));
+    }
     next(err);
   }
 };
@@ -799,15 +955,99 @@ exports.createCategory = async (req, res, next) => {
 // PUT /api/glam-baddies/categories/:id
 exports.updateCategory = async (req, res, next) => {
   try {
-    const { name, description } = req.body || {};
+    const {
+      ensureCategoryHomeColumns,
+      defaultHomeFields,
+      mapCategoryHome,
+    } = require('../services/categoriesHome');
+    await ensureCategoryHomeColumns();
+
+    const body = req.body || {};
+    const { name, description } = body;
     if (!name || !String(name).trim()) throw new ApiError(400, 'name is required');
+    const cleanName = String(name).trim();
+    const slug = slugify(cleanName);
+    const defaults = defaultHomeFields(cleanName, slug);
+
+    const homeEyebrow =
+      body.home_eyebrow !== undefined
+        ? String(body.home_eyebrow || '').trim().slice(0, 40) || defaults.home_eyebrow
+        : undefined;
+    const homeTitle =
+      body.home_title !== undefined
+        ? String(body.home_title || '').trim().slice(0, 80) || defaults.home_title
+        : undefined;
+    const homeImage =
+      body.home_image_url !== undefined
+        ? String(body.home_image_url || '').trim().slice(0, 500) || defaults.home_image_url
+        : undefined;
+
     const { rows } = await db.query(
-      `UPDATE categories SET name = $1, slug = $2, description = $3
-       WHERE id = $4 RETURNING *`,
-      [String(name).trim(), slugify(name), description ?? null, Number(req.params.id)]
+      `UPDATE categories
+       SET name = $1,
+           slug = $2,
+           description = $3,
+           home_eyebrow = COALESCE($4, home_eyebrow, $5),
+           home_title = COALESCE($6, home_title, $7),
+           home_image_url = COALESCE($8, home_image_url, $9)
+       WHERE id = $10
+       RETURNING *`,
+      [
+        cleanName,
+        slug,
+        description ?? null,
+        homeEyebrow ?? null,
+        defaults.home_eyebrow,
+        homeTitle ?? null,
+        defaults.home_title,
+        homeImage ?? null,
+        defaults.home_image_url,
+        Number(req.params.id),
+      ]
     );
     if (rows.length === 0) throw new ApiError(404, 'Category not found');
-    res.json({ category: rows[0] });
+    res.json({ category: mapCategoryHome(rows[0]) });
+  } catch (err) {
+    if (err && err.code === '23505') {
+      return next(new ApiError(409, 'A category with that name already exists'));
+    }
+    next(err);
+  }
+};
+
+// POST /api/glam-baddies/categories/:id/home-image
+exports.uploadCategoryHomeImage = async (req, res, next) => {
+  try {
+    const {
+      ensureCategoryHomeColumns,
+      mapCategoryHome,
+    } = require('../services/categoriesHome');
+    await ensureCategoryHomeColumns();
+
+    if (!req.file) {
+      throw new ApiError(400, 'Choose an image to upload');
+    }
+
+    const id = Number(req.params.id);
+    if (!Number.isInteger(id) || id <= 0) {
+      throw new ApiError(400, 'Invalid category id');
+    }
+
+    const imageUrl = `/uploads/${req.file.filename}`;
+    const { rows } = await db.query(
+      `UPDATE categories
+       SET home_image_url = $1
+       WHERE id = $2
+       RETURNING *`,
+      [imageUrl, id]
+    );
+    if (rows.length === 0) throw new ApiError(404, 'Category not found');
+
+    res.json({
+      category: mapCategoryHome(rows[0]),
+      message: 'Homepage tile image updated',
+      uploaded_url: imageUrl,
+    });
   } catch (err) {
     next(err);
   }

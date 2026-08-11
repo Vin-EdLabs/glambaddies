@@ -186,76 +186,111 @@ export function AdminProducts() {
         <label><Search /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search dresses..." /></label>
       </div>
       {loading ? <LoadingGrid /> : error ? <ErrorState retry={retry} /> : products.length ? (
-        <section className="admin-card table-card">
-          <div className="data-table">
-            <table>
-              <thead>
-                <tr>
-                  <th>Product</th>
-                  <th>Category</th>
-                  <th>Price (GHS)</th>
-                  <th>Stock</th>
-                  <th>Status</th>
-                  <th>Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {products.map((product) => (
-                  <tr
-                    key={product.id}
-                    className="clickable-row"
-                    tabIndex={0}
-                    onClick={() => openProduct(product.id)}
-                    onKeyDown={(event) => {
-                      if (event.key === 'Enter' || event.key === ' ') {
-                        event.preventDefault()
-                        openProduct(product.id)
-                      }
-                    }}
-                  >
-                    <td>
-                      <div className="table-product">
-                        <img
-                          src={product.image || fallbackImage}
-                          alt=""
-                          onError={(event) => {
-                            event.currentTarget.onerror = null
-                            event.currentTarget.src = fallbackImage
-                          }}
-                        />
-                        <span><b>{product.name}</b><small>#{product.id}</small></span>
-                      </div>
-                    </td>
-                    <td>{product.category}</td>
-                    <td>{formatCurrency(product.price)}</td>
-                    <td><span className={product.stock < 6 ? 'low-stock' : ''}>{product.stock} units</span></td>
-                    <td><span className={`status ${product.is_active ? 'active' : 'draft'}`}>{product.is_active ? 'Active' : 'Inactive'}</span></td>
-                    <td onClick={(event) => event.stopPropagation()}>
-                      <div className="row-actions">
-                        <Link className="table-icon" to={`${ADMIN_PATH}/products/${product.id}/edit`} aria-label={`View ${product.name}`} title="View">
-                          <Eye />
-                        </Link>
-                        <Link className="table-icon" to={`${ADMIN_PATH}/products/${product.id}/edit`} aria-label={`Edit ${product.name}`} title="Edit">
-                          <Edit3 />
-                        </Link>
-                        <button
-                          type="button"
-                          className="table-icon danger"
-                          aria-label={`Delete ${product.name}`}
-                          title="Delete"
-                          onClick={() => askDelete(product)}
-                        >
-                          <Trash2 />
-                        </button>
-                      </div>
-                    </td>
+        <>
+          <section className="admin-card table-card products-table-desktop">
+            <div className="data-table">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Product</th>
+                    <th>Category</th>
+                    <th>Price (GHS)</th>
+                    <th>Stock</th>
+                    <th>Status</th>
+                    <th>Actions</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {products.map((product) => (
+                    <tr
+                      key={product.id}
+                      className="clickable-row"
+                      tabIndex={0}
+                      onClick={() => openProduct(product.id)}
+                      onKeyDown={(event) => {
+                        if (event.key === 'Enter' || event.key === ' ') {
+                          event.preventDefault()
+                          openProduct(product.id)
+                        }
+                      }}
+                    >
+                      <td>
+                        <div className="table-product">
+                          <img
+                            src={product.image || fallbackImage}
+                            alt=""
+                            onError={(event) => {
+                              event.currentTarget.onerror = null
+                              event.currentTarget.src = fallbackImage
+                            }}
+                          />
+                          <span><b>{product.name}</b><small>#{product.id}</small></span>
+                        </div>
+                      </td>
+                      <td>{product.category}</td>
+                      <td>{formatCurrency(product.price)}</td>
+                      <td><span className={product.stock < 6 ? 'low-stock' : ''}>{product.stock} units</span></td>
+                      <td><span className={`status ${product.is_active ? 'active' : 'draft'}`}>{product.is_active ? 'Active' : 'Inactive'}</span></td>
+                      <td onClick={(event) => event.stopPropagation()}>
+                        <div className="row-actions">
+                          <Link className="table-icon" to={`${ADMIN_PATH}/products/${product.id}/edit`} aria-label={`View ${product.name}`} title="View">
+                            <Eye />
+                          </Link>
+                          <Link className="table-icon" to={`${ADMIN_PATH}/products/${product.id}/edit`} aria-label={`Edit ${product.name}`} title="Edit">
+                            <Edit3 />
+                          </Link>
+                          <button
+                            type="button"
+                            className="table-icon danger"
+                            aria-label={`Delete ${product.name}`}
+                            title="Delete"
+                            onClick={() => askDelete(product)}
+                          >
+                            <Trash2 />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <Pagination page={page} total={data.pagination.total} limit={20} setPage={setPage} />
+          </section>
+
+          <div className="products-mobile-list">
+            {products.map((product) => (
+              <article className="product-mobile-card" key={`mobile-${product.id}`}>
+                <button type="button" className="product-mobile-main" onClick={() => openProduct(product.id)}>
+                  <img
+                    src={product.image || fallbackImage}
+                    alt=""
+                    onError={(event) => {
+                      event.currentTarget.onerror = null
+                      event.currentTarget.src = fallbackImage
+                    }}
+                  />
+                  <div>
+                    <div className="product-mobile-top">
+                      <h3>{product.name}</h3>
+                      <span className={`status ${product.is_active ? 'active' : 'draft'}`}>{product.is_active ? 'Active' : 'Inactive'}</span>
+                    </div>
+                    <p>{product.category || 'Uncategorised'}</p>
+                    <div className="product-mobile-meta">
+                      <strong>{formatCurrency(product.price)}</strong>
+                      <span className={product.stock < 6 ? 'low-stock' : ''}>{product.stock} in stock</span>
+                    </div>
+                  </div>
+                </button>
+                <div className="product-mobile-actions">
+                  <Link className="admin-button" to={`${ADMIN_PATH}/products/${product.id}/edit`}>Edit</Link>
+                  <button className="admin-button danger" type="button" onClick={() => askDelete(product)}>Delete</button>
+                </div>
+              </article>
+            ))}
+            <Pagination page={page} total={data.pagination.total} limit={20} setPage={setPage} />
           </div>
-          <Pagination page={page} total={data.pagination.total} limit={20} setPage={setPage} />
-        </section>
+        </>
       ) : (
         <EmptyState title="No products found" text="Add a dress or change your search." action="Add New Product" to={`${ADMIN_PATH}/products/new`} />
       )}
@@ -289,7 +324,7 @@ export function ProductForm() {
   const [primaryBusy, setPrimaryBusy] = useState(null)
   const { data, loading, error, retry, setData } = useAdminData(
     () => Promise.all([
-      api.get('/categories'),
+      api.get('/glam-baddies/categories'),
       id
         ? api.get('/glam-baddies/products', { params: { limit: 100, include_inactive: 1 } })
         : Promise.resolve({ data: { products: [] } }),
@@ -367,12 +402,9 @@ export function ProductForm() {
   if (loading) return <AdminPage title="Product"><LoadingGrid /></AdminPage>
   if (error) return <AdminPage title="Product"><ErrorState retry={retry} /></AdminPage>
   if (id && !product) return <AdminPage title="Product"><EmptyState title="Product not found" text="It may have been deleted." action="Back to products" to={`${ADMIN_PATH}/products`} /></AdminPage>
-  const dressCategories = asArray(data?.categories).filter((category) =>
-    /dress/i.test(category.name) || /dress/i.test(category.slug)
-  )
-  const categoryOptions = dressCategories.length ? dressCategories : asArray(data?.categories)
+  const categoryOptions = asArray(data?.categories)
   const defaultCategoryId = product?.category_id
-    || categoryOptions.find((category) => category.slug === 'dresses')?.id
+    || categoryOptions.find((category) => category.slug === 'casual-dresses')?.id
     || categoryOptions[0]?.id
     || ''
   return (
@@ -409,9 +441,10 @@ export function ProductForm() {
               </div>
             </div>
             <label className="upload-area">
-              <Upload />
-              <b>Add more images</b>
+              <span className="upload-area-icon"><Upload /></span>
+              <b>Tap to add images</b>
               <small>PNG, JPG or WEBP · up to 12 images · max 15MB each</small>
+              <span className="upload-area-cta">Choose photos</span>
               <input type="file" accept="image/png,image/jpeg,image/webp,image/gif" multiple onChange={onPickFiles} />
             </label>
 
@@ -838,20 +871,33 @@ export function AdminOrderDetail() {
 
 export function AdminCategories() {
   const [editing, setEditing] = useState(null)
-  const { data: categories, loading, error, retry, setData } = useAdminData(() => api.get('/categories').then(({ data }) => asArray(data?.categories)), [])
+  const [tileSavingId, setTileSavingId] = useState(null)
+  const [tileUploadingId, setTileUploadingId] = useState(null)
+  const { data: categories, loading, error, retry, setData } = useAdminData(
+    () => api.get('/glam-baddies/categories').then(({ data }) => asArray(data?.categories)),
+    [],
+  )
+
   const save = async (event) => {
     event.preventDefault()
     const form = event.currentTarget
     const values = Object.fromEntries(new FormData(form))
     try {
-      const { data } = editing?.id ? await api.put(`/glam-baddies/categories/${editing.id}`, values) : await api.post('/glam-baddies/categories', values)
-      setData(editing?.id ? categories.map((item) => item.id === editing.id ? { ...item, ...data.category } : item) : [...categories, { ...data.category, product_count: 0 }])
+      const { data } = editing?.id
+        ? await api.put(`/glam-baddies/categories/${editing.id}`, values)
+        : await api.post('/glam-baddies/categories', values)
+      setData(
+        editing?.id
+          ? categories.map((item) => (item.id === editing.id ? { ...item, ...data.category } : item))
+          : [...categories, { ...data.category, product_count: 0 }],
+      )
       setEditing(null)
-      toast.success(editing?.id ? 'Category updated' : 'Category created')
+      toast.success(editing?.id ? 'Category updated' : 'Category created — homepage tile added')
     } catch (saveError) {
       toast.error(errorMessage(saveError, 'Could not save category'))
     }
   }
+
   const remove = async (category) => {
     if (!window.confirm(`Delete ${category.name}? Products will become uncategorised.`)) return
     try {
@@ -862,7 +908,166 @@ export function AdminCategories() {
       toast.error(errorMessage(deleteError, 'Could not delete category'))
     }
   }
-  return <AdminPage title="Categories" intro="Organise products into collections" action={<button className="admin-button primary" onClick={() => setEditing({})}><Plus /> Add category</button>}>{editing && <form className="admin-card stack-form" onSubmit={save}><label>Name<input name="name" required defaultValue={editing.name} /></label><label>Description<textarea name="description" defaultValue={editing.description} /></label><div className="form-actions"><button type="button" onClick={() => setEditing(null)}>Cancel</button><button className="admin-button primary">Save category</button></div></form>}{loading ? <LoadingGrid /> : error ? <ErrorState retry={retry} /> : asArray(categories).length ? <div className="category-admin-grid">{asArray(categories).map((category) => <article className="admin-card" key={category.id}><div><span><h3>{category.name}</h3><p>{category.product_count} products</p></span><div className="row-actions"><button onClick={() => setEditing(category)}><Edit3 /></button><button onClick={() => remove(category)}><Trash2 /></button></div></div></article>)}</div> : <EmptyState title="No categories yet" text="Create a category to organise products." />}</AdminPage>
+
+  const updateHomeField = (categoryId, field, value) => {
+    setData(asArray(categories).map((item) => (
+      item.id === categoryId ? { ...item, [field]: value } : item
+    )))
+  }
+
+  const saveHomeTile = async (category) => {
+    if (!category?.id || tileSavingId) return
+    setTileSavingId(category.id)
+    try {
+      const { data } = await api.put(`/glam-baddies/categories/${category.id}`, {
+        name: category.name,
+        description: category.description || '',
+        home_eyebrow: category.home_eyebrow || '',
+        home_title: category.home_title || '',
+        home_image_url: category.home_image_url || '',
+      })
+      setData(asArray(categories).map((item) => (
+        item.id === category.id ? { ...item, ...data.category } : item
+      )))
+      toast.success('Homepage tile saved')
+    } catch (saveError) {
+      toast.error(errorMessage(saveError, 'Could not save homepage tile'))
+    } finally {
+      setTileSavingId(null)
+    }
+  }
+
+  const uploadHomeImage = async (category, file) => {
+    if (!category?.id || !file) return
+    setTileUploadingId(category.id)
+    try {
+      const body = new FormData()
+      body.append('image', file)
+      const { data } = await api.post(`/glam-baddies/categories/${category.id}/home-image`, body, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      })
+      setData(asArray(categories).map((item) => (
+        item.id === category.id ? { ...item, ...data.category } : item
+      )))
+      toast.success(data.message || 'Image uploaded')
+    } catch (uploadError) {
+      toast.error(errorMessage(uploadError, 'Could not upload image'))
+    } finally {
+      setTileUploadingId(null)
+    }
+  }
+
+  return (
+    <AdminPage
+      title="Categories"
+      intro="Each category appears in the shop and gets its own homepage image tile."
+      action={<button className="admin-button primary" type="button" onClick={() => setEditing({})}><Plus /> Add category</button>}
+    >
+      {editing && (
+        <form className="admin-card stack-form" onSubmit={save}>
+          <label>
+            Name
+            <input name="name" required defaultValue={editing.name || ''} placeholder="e.g. Formal dresses" />
+          </label>
+          <label>
+            Description
+            <textarea name="description" defaultValue={editing.description || ''} placeholder="Optional short description" />
+          </label>
+          <div className="form-actions">
+            <button type="button" onClick={() => setEditing(null)}>Cancel</button>
+            <button className="admin-button primary" type="submit">Save category</button>
+          </div>
+        </form>
+      )}
+
+      {loading ? (
+        <LoadingGrid />
+      ) : error ? (
+        <ErrorState retry={retry} />
+      ) : asArray(categories).length ? (
+        <div className="category-admin-grid category-admin-grid--home">
+          {asArray(categories).map((category) => (
+            <article className="admin-card category-home-card" key={category.id}>
+              <div className="category-home-card-head">
+                <span>
+                  <h3>{category.name}</h3>
+                  <p>{category.product_count || 0} products · {category.slug}</p>
+                </span>
+                <div className="row-actions">
+                  <button type="button" onClick={() => setEditing(category)} aria-label={`Edit ${category.name}`}><Edit3 /></button>
+                  <button type="button" onClick={() => remove(category)} aria-label={`Delete ${category.name}`}><Trash2 /></button>
+                </div>
+              </div>
+
+              <div className="homepage-feature-preview">
+                {category.home_image_url ? (
+                  <img src={resolveImageUrl(category.home_image_url) || category.home_image_url} alt="" />
+                ) : (
+                  <span className="homepage-feature-empty">No homepage image</span>
+                )}
+                <div className="homepage-feature-caption">
+                  <span className="eyebrow">{category.home_eyebrow || 'Eyebrow'}</span>
+                  <strong>{category.home_title || 'Homepage title'}</strong>
+                </div>
+              </div>
+
+              <div className="category-home-fields">
+                <label>
+                  <span>Eyebrow</span>
+                  <input
+                    type="text"
+                    maxLength={40}
+                    value={category.home_eyebrow || ''}
+                    onChange={(event) => updateHomeField(category.id, 'home_eyebrow', event.target.value.slice(0, 40))}
+                    placeholder="e.g. Casual"
+                  />
+                </label>
+                <label>
+                  <span>Title</span>
+                  <input
+                    type="text"
+                    maxLength={80}
+                    value={category.home_title || ''}
+                    onChange={(event) => updateHomeField(category.id, 'home_title', event.target.value.slice(0, 80))}
+                    placeholder="e.g. Everyday dresses"
+                  />
+                </label>
+              </div>
+              <label className="homepage-feature-upload">
+                <span className="homepage-feature-upload-icon"><Upload size={18} /></span>
+                <span className="homepage-feature-upload-copy">
+                  <b>{tileUploadingId === category.id ? 'Uploading…' : 'Upload homepage image'}</b>
+                  <small>Tap to choose a photo from your phone</small>
+                </span>
+                <input
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp,image/gif"
+                  disabled={tileUploadingId === category.id}
+                  onChange={(event) => {
+                    const file = event.target.files?.[0]
+                    event.target.value = ''
+                    if (file) uploadHomeImage(category, file)
+                  }}
+                />
+              </label>
+              <div className="form-actions">
+                <button
+                  type="button"
+                  className="admin-button primary"
+                  disabled={tileSavingId === category.id || tileUploadingId === category.id}
+                  onClick={() => saveHomeTile(category)}
+                >
+                  <Check /> {tileSavingId === category.id ? 'Saving…' : 'Save homepage tile'}
+                </button>
+              </div>
+            </article>
+          ))}
+        </div>
+      ) : (
+        <EmptyState title="No categories yet" text="Create a category to organise products and add a homepage tile." />
+      )}
+    </AdminPage>
+  )
 }
 
 export function AdminCustomers() {
@@ -1173,6 +1378,7 @@ export function AdminSettings() {
         live_secret: settings.paystack_live_secret_key || '',
         usd_to_ghs_rate: Number(settings.usd_to_ghs_rate) > 0 ? Number(settings.usd_to_ghs_rate) : 15.5,
         announcement_text: settings.announcement_text || 'Shop · Slay · Shine',
+        homepage_features: asArray(settings.homepage_features),
       }
     }),
     [],
@@ -1351,7 +1557,7 @@ export function AdminSettings() {
           </button>
           <button type="button" role="tab" aria-selected={tab === 'store'} className={tab === 'store' ? 'active' : ''} onClick={() => setTab('store')}>
             <span>Store</span>
-            <small>Purchases &amp; currency</small>
+            <small>Purchases, banner &amp; homepage tiles</small>
           </button>
           <button type="button" role="tab" aria-selected={tab === 'payments'} className={tab === 'payments' ? 'active' : ''} onClick={() => setTab('payments')}>
             <span>Payments</span>
@@ -1517,6 +1723,43 @@ export function AdminSettings() {
                   </button>
                 </div>
               </form>
+
+              <section className="admin-card">
+                <div className="card-head">
+                  <div>
+                    <h2>Homepage category tiles</h2>
+                    <p>
+                      Every category has its own homepage image tile. Edit images and text under{' '}
+                      <Link to={`${ADMIN_PATH}/categories`}>Categories</Link>.
+                    </p>
+                  </div>
+                </div>
+                {asArray(data?.homepage_features).length ? (
+                  <div className="homepage-feature-grid homepage-feature-grid--readonly">
+                    {asArray(data.homepage_features).map((feature) => (
+                      <article className="homepage-feature-card" key={feature.id || feature.category_slug}>
+                        <div className="homepage-feature-preview">
+                          {feature.image_url ? (
+                            <img src={resolveImageUrl(feature.image_url) || feature.image_url} alt="" />
+                          ) : (
+                            <span>No image</span>
+                          )}
+                        </div>
+                        <p><b>{feature.eyebrow || feature.category_slug}</b></p>
+                        <p>{feature.title || '—'}</p>
+                      </article>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="settings-hint">No categories yet. Add one under Categories to create a homepage tile.</p>
+                )}
+                <div className="form-actions">
+                  <Link className="admin-button primary" to={`${ADMIN_PATH}/categories`}>
+                    Manage category tiles
+                  </Link>
+                </div>
+              </section>
+
               <section className="admin-card">
                 <div className="card-head">
                   <div>

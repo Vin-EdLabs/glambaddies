@@ -7,7 +7,7 @@ import { EmptyState, ErrorState, LoadingGrid, PasswordInput, ProductCard, CopyVa
 import SEO from '../components/SEO'
 import { ProductImageGallery } from '../ProductImageGallery'
 import { useAuth, useCart } from '../contexts'
-import api, { asArray, errorMessage, getProductCacheRev, mapProduct, mapProducts, syncCatalogueRevision } from '../services/api'
+import api, { asArray, errorMessage, getProductCacheRev, mapProduct, mapProducts, resolveImageUrl, syncCatalogueRevision } from '../services/api'
 import { formatCurrency } from '../utils'
 import { DRESS_COLORS, DRESS_SIZES } from '../dressOptions'
 
@@ -57,14 +57,40 @@ function useProductCacheRev() {
   return rev
 }
 
+const DEFAULT_HOME_FEATURES = [
+  { category_slug: 'casual-dresses', eyebrow: 'Casual', title: 'Everyday dresses', image_url: '/edit-casual.jpg' },
+  { category_slug: 'party-dresses', eyebrow: 'Party', title: 'Celebration looks', image_url: '/edit-party.jpg' },
+  { category_slug: 'school-dresses', eyebrow: 'School', title: 'Smart day dresses', image_url: '/edit-school.jpg' },
+]
+
+const HOME_CATEGORY_COPY = {
+  'casual-dresses': {
+    eyebrow: 'Casual dresses',
+    title: 'Everyday glam',
+    text: 'Soft silhouettes for sunny days, weekends and little moments in between.',
+  },
+  'party-dresses': {
+    eyebrow: 'Party dresses',
+    title: 'Ready to celebrate',
+    text: 'Tulle, shimmer and statement pieces made for birthdays and big nights.',
+  },
+  'school-dresses': {
+    eyebrow: 'School dresses',
+    title: 'Smart day looks',
+    text: 'Neat, comfortable dresses that look polished from morning assembly to after school.',
+  },
+}
+
 export function Home() {
   const productsRev = useProductCacheRev()
   const { data, loading, error, retry } = useApi(
     () => Promise.all([
+      api.get('/store/status'),
+      api.get('/categories'),
       api.get('/products', { params: { category: 'casual-dresses', limit: 4, sort: 'newest' } }),
       api.get('/products', { params: { category: 'party-dresses', limit: 4, sort: 'newest' } }),
       api.get('/products', { params: { category: 'school-dresses', limit: 4, sort: 'newest' } }),
-    ]).then(([casualResult, partyResult, schoolResult]) => {
+    ]).then(([statusResult, categoriesResult, casualResult, partyResult, schoolResult]) => {
       const revision =
         casualResult.data?.revision ??
         partyResult.data?.revision ??
@@ -72,7 +98,22 @@ export function Home() {
       if (revision != null) {
         try { localStorage.setItem('glam_products_rev', String(revision)) } catch { /* ignore */ }
       }
+      const fromStatus = asArray(statusResult.data?.homepage_features)
+      const fromCategories = asArray(categoriesResult.data?.homepage_features).length
+        ? asArray(categoriesResult.data.homepage_features)
+        : asArray(categoriesResult.data?.categories).map((category) => ({
+            id: `category-${category.id}`,
+            category_id: category.id,
+            category_slug: category.slug,
+            eyebrow: category.home_eyebrow,
+            title: category.home_title,
+            image_url: category.home_image_url,
+          }))
+      const features = (fromStatus.length ? fromStatus : fromCategories).length
+        ? (fromStatus.length ? fromStatus : fromCategories)
+        : DEFAULT_HOME_FEATURES
       return {
+        features,
         casual: mapProducts(casualResult.data?.products),
         party: mapProducts(partyResult.data?.products),
         school: mapProducts(schoolResult.data?.products),
@@ -84,29 +125,54 @@ export function Home() {
   const categories = [
     {
       key: 'casual',
-      eyebrow: 'Casual dresses',
-      title: 'Everyday glam',
-      text: 'Soft silhouettes for sunny days, weekends and little moments in between.',
+      eyebrow: HOME_CATEGORY_COPY['casual-dresses'].eyebrow,
+      title: HOME_CATEGORY_COPY['casual-dresses'].title,
+      text: HOME_CATEGORY_COPY['casual-dresses'].text,
       to: '/shop?category=casual-dresses',
       products: asArray(data?.casual),
     },
     {
       key: 'party',
-      eyebrow: 'Party dresses',
-      title: 'Ready to celebrate',
-      text: 'Tulle, shimmer and statement pieces made for birthdays and big nights.',
+      eyebrow: HOME_CATEGORY_COPY['party-dresses'].eyebrow,
+      title: HOME_CATEGORY_COPY['party-dresses'].title,
+      text: HOME_CATEGORY_COPY['party-dresses'].text,
       to: '/shop?category=party-dresses',
       products: asArray(data?.party),
     },
     {
       key: 'school',
-      eyebrow: 'School dresses',
-      title: 'Smart day looks',
-      text: 'Neat, comfortable dresses that look polished from morning assembly to after school.',
+      eyebrow: HOME_CATEGORY_COPY['school-dresses'].eyebrow,
+      title: HOME_CATEGORY_COPY['school-dresses'].title,
+      text: HOME_CATEGORY_COPY['school-dresses'].text,
       to: '/shop?category=school-dresses',
       products: asArray(data?.school),
     },
   ]
+
+  const featureTiles = (data?.features || DEFAULT_HOME_FEATURES).map((feature, index) => {
+    const fallback = DEFAULT_HOME_FEATURES[index] || DEFAULT_HOME_FEATURES[0]
+    const slug = feature.category_slug || fallback.category_slug
+    const eyebrow = feature.eyebrow || fallback.eyebrow
+    const title = feature.title || fallback.title
+    const image = resolveImageUrl(feature.image_url || fallback.image_url) || feature.image_url || fallback.image_url
+    return {
+      key: `tile-${feature.category_id || index}-${slug}`,
+      to: `/shop?category=${encodeURIComponent(slug)}`,
+      image,
+      eyebrow,
+      title,
+      alt: `${eyebrow} girls dresses`,
+    }
+  })
+
+  const tileCount = featureTiles.length
+  const editorialClass = tileCount === 1
+    ? 'editorial-grid editorial-grid--one'
+    : tileCount === 2
+      ? 'editorial-grid editorial-grid--two'
+      : tileCount === 3
+        ? 'editorial-grid editorial-grid--three'
+        : 'editorial-grid editorial-grid--many'
 
   return (
     <>
@@ -183,31 +249,9 @@ export function Home() {
         </div>
       </section>
 
-      <section className="editorial-grid editorial-grid--three" aria-label="Shop by category">
-        {[
-          {
-            to: '/shop?category=casual-dresses',
-            image: '/edit-casual.jpg',
-            eyebrow: 'Casual',
-            title: 'Everyday dresses',
-            alt: 'Casual girls dresses',
-          },
-          {
-            to: '/shop?category=party-dresses',
-            image: '/edit-party.jpg',
-            eyebrow: 'Party',
-            title: 'Celebration looks',
-            alt: 'Party girls dresses',
-          },
-          {
-            to: '/shop?category=school-dresses',
-            image: '/edit-school.jpg',
-            eyebrow: 'School',
-            title: 'Smart day dresses',
-            alt: 'School girls dresses',
-          },
-        ].map((edit) => (
-          <Link to={edit.to} key={edit.to}>
+      <section className={editorialClass} aria-label="Shop by category">
+        {featureTiles.map((edit) => (
+          <Link to={edit.to} key={edit.key}>
             <img src={edit.image} alt={edit.alt} />
             <div>
               <span className="eyebrow">{edit.eyebrow}</span>
