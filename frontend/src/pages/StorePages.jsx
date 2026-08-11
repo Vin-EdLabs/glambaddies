@@ -63,45 +63,35 @@ const DEFAULT_HOME_FEATURES = [
   { category_slug: 'school-dresses', eyebrow: 'School', title: 'Smart day dresses', image_url: '/edit-school.jpg' },
 ]
 
-const HOME_CATEGORY_COPY = {
-  'casual-dresses': {
-    eyebrow: 'Casual dresses',
-    title: 'Everyday glam',
-    text: 'Soft silhouettes for sunny days, weekends and little moments in between.',
-  },
-  'party-dresses': {
-    eyebrow: 'Party dresses',
-    title: 'Ready to celebrate',
-    text: 'Tulle, shimmer and statement pieces made for birthdays and big nights.',
-  },
-  'school-dresses': {
-    eyebrow: 'School dresses',
-    title: 'Smart day looks',
-    text: 'Neat, comfortable dresses that look polished from morning assembly to after school.',
-  },
+function categorySectionCopy(category) {
+  const name = String(category?.name || 'Dresses').trim()
+  const eyebrow = String(category?.home_eyebrow || name).trim() || name
+  const title = String(category?.home_title || name).trim() || name
+  const text = String(category?.description || '').trim()
+  return { eyebrow, title, text }
 }
 
 export function Home() {
   const productsRev = useProductCacheRev()
   const { data, loading, error, retry } = useApi(
-    () => Promise.all([
-      api.get('/store/status'),
-      api.get('/categories'),
-      api.get('/products', { params: { category: 'casual-dresses', limit: 4, sort: 'newest' } }),
-      api.get('/products', { params: { category: 'party-dresses', limit: 4, sort: 'newest' } }),
-      api.get('/products', { params: { category: 'school-dresses', limit: 4, sort: 'newest' } }),
-    ]).then(([statusResult, categoriesResult, casualResult, partyResult, schoolResult]) => {
-      const revision =
-        casualResult.data?.revision ??
-        partyResult.data?.revision ??
-        schoolResult.data?.revision
+    () => api.get('/categories').then(async ({ data: categoriesPayload }) => {
+      const allCategories = asArray(categoriesPayload?.categories)
+      const productResults = await Promise.all(
+        allCategories.map((category) =>
+          api.get('/products', {
+            params: { category: category.slug, limit: 4, sort: 'newest' },
+          }).catch(() => ({ data: { products: [] } })),
+        ),
+      )
+
+      const revision = productResults.find((result) => result.data?.revision != null)?.data?.revision
       if (revision != null) {
         try { localStorage.setItem('glam_products_rev', String(revision)) } catch { /* ignore */ }
       }
-      const fromStatus = asArray(statusResult.data?.homepage_features)
-      const fromCategories = asArray(categoriesResult.data?.homepage_features).length
-        ? asArray(categoriesResult.data.homepage_features)
-        : asArray(categoriesResult.data?.categories).map((category) => ({
+
+      const features = asArray(categoriesPayload?.homepage_features).length
+        ? asArray(categoriesPayload.homepage_features)
+        : allCategories.map((category) => ({
             id: `category-${category.id}`,
             category_id: category.id,
             category_slug: category.slug,
@@ -109,45 +99,33 @@ export function Home() {
             title: category.home_title,
             image_url: category.home_image_url,
           }))
-      const features = (fromStatus.length ? fromStatus : fromCategories).length
-        ? (fromStatus.length ? fromStatus : fromCategories)
-        : DEFAULT_HOME_FEATURES
+
+      const sections = allCategories
+        .map((category, index) => {
+          const copy = categorySectionCopy(category)
+          const products = mapProducts(productResults[index]?.data?.products)
+          return {
+            key: `category-${category.id || category.slug}`,
+            slug: category.slug,
+            eyebrow: copy.eyebrow,
+            title: copy.title,
+            text: copy.text,
+            to: `/shop?category=${encodeURIComponent(category.slug)}`,
+            products,
+          }
+        })
+        .filter((section) => section.products.length > 0)
+
       return {
-        features,
-        casual: mapProducts(casualResult.data?.products),
-        party: mapProducts(partyResult.data?.products),
-        school: mapProducts(schoolResult.data?.products),
+        features: features.length ? features : DEFAULT_HOME_FEATURES,
+        sections,
+        categoryNames: allCategories.map((category) => category.name).filter(Boolean),
       }
     }),
     [productsRev],
   )
 
-  const categories = [
-    {
-      key: 'casual',
-      eyebrow: HOME_CATEGORY_COPY['casual-dresses'].eyebrow,
-      title: HOME_CATEGORY_COPY['casual-dresses'].title,
-      text: HOME_CATEGORY_COPY['casual-dresses'].text,
-      to: '/shop?category=casual-dresses',
-      products: asArray(data?.casual),
-    },
-    {
-      key: 'party',
-      eyebrow: HOME_CATEGORY_COPY['party-dresses'].eyebrow,
-      title: HOME_CATEGORY_COPY['party-dresses'].title,
-      text: HOME_CATEGORY_COPY['party-dresses'].text,
-      to: '/shop?category=party-dresses',
-      products: asArray(data?.party),
-    },
-    {
-      key: 'school',
-      eyebrow: HOME_CATEGORY_COPY['school-dresses'].eyebrow,
-      title: HOME_CATEGORY_COPY['school-dresses'].title,
-      text: HOME_CATEGORY_COPY['school-dresses'].text,
-      to: '/shop?category=school-dresses',
-      products: asArray(data?.school),
-    },
-  ]
+  const categories = asArray(data?.sections)
 
   const featureTiles = (data?.features || DEFAULT_HOME_FEATURES).map((feature, index) => {
     const fallback = DEFAULT_HOME_FEATURES[index] || DEFAULT_HOME_FEATURES[0]
@@ -174,11 +152,15 @@ export function Home() {
         ? 'editorial-grid editorial-grid--three'
         : 'editorial-grid editorial-grid--many'
 
+  const collectionLine = asArray(data?.categoryNames).length
+    ? `${asArray(data.categoryNames).join(', ')} — every GlamBaddies dress in one place.`
+    : 'Every GlamBaddies dress in one place.'
+
   return (
     <>
       <SEO
         title="Girls Dresses in Ghana"
-        description="Shop the latest girls dresses at GlamBaddies. Casual, party, and school dresses delivered across Ghana."
+        description="Shop the latest girls dresses at GlamBaddies. Discover every category and find looks delivered across Ghana."
         url={`${SITE_URL}/`}
       />
 
@@ -194,54 +176,49 @@ export function Home() {
         </div>
       </section>
 
-      {categories.map((category) => (
-        <section className="section home-category" key={category.key}>
-          <div className="section-head home-category-head">
-            <div>
-              <span className="eyebrow">{category.eyebrow}</span>
-              <h2>{category.title}</h2>
-              <p className="home-category-copy">{category.text}</p>
-            </div>
-            <Link className="browse-all" to={category.to}>
-              Shop all
-              <ArrowRight size={16} />
-            </Link>
-          </div>
-
-          {loading ? (
-            <LoadingGrid />
-          ) : error ? (
-            <ErrorState retry={retry} />
-          ) : category.products.length ? (
-            <>
-              <div className="product-grid home-category-grid">
-                {category.products.map((product) => (
-                  <ProductCard product={product} key={product.id} />
-                ))}
-              </div>
-              <div className="home-category-foot">
-                <Link className="browse-all browse-all--solid" to={category.to}>
-                  Shop all {category.eyebrow.toLowerCase()}
-                  <ArrowRight size={16} />
-                </Link>
-              </div>
-            </>
-          ) : (
-            <EmptyState
-              title={`New ${category.eyebrow.toLowerCase()} coming soon`}
-              text="Our next edit is being prepared."
-              action="Shop all dresses"
-              to="/shop"
-            />
-          )}
+      {loading ? (
+        <section className="section home-category">
+          <LoadingGrid />
         </section>
-      ))}
+      ) : error ? (
+        <section className="section home-category">
+          <ErrorState retry={retry} />
+        </section>
+      ) : (
+        categories.map((category) => (
+          <section className="section home-category" key={category.key}>
+            <div className="section-head home-category-head">
+              <div>
+                <span className="eyebrow">{category.eyebrow}</span>
+                <h2>{category.title}</h2>
+                {category.text ? <p className="home-category-copy">{category.text}</p> : null}
+              </div>
+              <Link className="browse-all" to={category.to}>
+                Shop all
+                <ArrowRight size={16} />
+              </Link>
+            </div>
+
+            <div className="product-grid home-category-grid">
+              {category.products.map((product) => (
+                <ProductCard product={product} key={product.id} />
+              ))}
+            </div>
+            <div className="home-category-foot">
+              <Link className="browse-all browse-all--solid" to={category.to}>
+                Shop all {category.eyebrow.toLowerCase()}
+                <ArrowRight size={16} />
+              </Link>
+            </div>
+          </section>
+        ))
+      )}
 
       <section className="home-shop-all" aria-label="Shop every dress">
         <div className="home-shop-all-inner">
           <span className="eyebrow">The full collection</span>
           <h2>Shop all dresses</h2>
-          <p>Casual, party and school — every GlamBaddies dress in one place.</p>
+          <p>{collectionLine}</p>
           <Link className="browse-all browse-all--solid" to="/shop">
             Shop all
             <ArrowRight size={16} />
@@ -249,18 +226,20 @@ export function Home() {
         </div>
       </section>
 
-      <section className={editorialClass} aria-label="Shop by category">
-        {featureTiles.map((edit) => (
-          <Link to={edit.to} key={edit.key}>
-            <img src={edit.image} alt={edit.alt} />
-            <div>
-              <span className="eyebrow">{edit.eyebrow}</span>
-              <h2>{edit.title}</h2>
-              <span className="browse-all browse-all--on-dark">Shop all <ArrowRight size={14} /></span>
-            </div>
-          </Link>
-        ))}
-      </section>
+      {featureTiles.length ? (
+        <section className={editorialClass} aria-label="Shop by category">
+          {featureTiles.map((edit) => (
+            <Link to={edit.to} key={edit.key}>
+              <img src={edit.image} alt={edit.alt} />
+              <div>
+                <span className="eyebrow">{edit.eyebrow}</span>
+                <h2>{edit.title}</h2>
+                <span className="browse-all browse-all--on-dark">Shop all <ArrowRight size={14} /></span>
+              </div>
+            </Link>
+          ))}
+        </section>
+      ) : null}
 
       <section className="manifesto">
         <span className="eyebrow">Shop · Slay · Shine</span>

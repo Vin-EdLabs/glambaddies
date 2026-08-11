@@ -252,11 +252,7 @@ export function StoreLayout() {
       })
       .catch(() => {})
   }, [location.pathname])
-  const CATEGORY_ORDER = ['casual-dresses', 'party-dresses', 'school-dresses']
   const orderedCategories = asArray(categories)
-    .filter((item) => CATEGORY_ORDER.includes(item.slug))
-    .slice()
-    .sort((a, b) => CATEGORY_ORDER.indexOf(a.slug) - CATEGORY_ORDER.indexOf(b.slug))
   const navLinks = [
     { label: 'New arrivals', to: '/shop', isActive: location.pathname === '/shop' && !category },
     ...orderedCategories.map((item) => ({ label: item.name, to: `/shop?category=${encodeURIComponent(item.slug)}`, isActive: location.pathname === '/shop' && category === item.slug })),
