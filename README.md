@@ -26,11 +26,9 @@ Uploaded product images and `/api` only work on the VPS + Nginx setup.
    curl -sI https://www.glambaddies.com/api/health
    # expect: {"status":"ok","service":"glambaddies-api",...}
    ```
-4. On the VPS, apply the uploads-safe Nginx config and reload:
-   ```bash
-   sudo cp /var/www/glambaddies/deploy/nginx-glambaddies.conf /etc/nginx/sites-available/glambaddies
-   sudo nginx -t && sudo systemctl reload nginx
-   ```
+4. Nginx on the VPS is **yours** — `deploy.sh` / `git pull` do **not** overwrite `/etc/nginx`.
+   `deploy/nginx-glambaddies.conf` is only a reference sample. Copy it manually if you
+   want to replace the live config on purpose.
 
 ## Setup (local dev)
 

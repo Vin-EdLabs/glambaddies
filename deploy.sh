@@ -32,26 +32,9 @@ npm run migrate 2>/dev/null || true
 # Restart API
 pm2 restart glambaddies --update-env || pm2 start ecosystem.config.js --env production
 
-# Apply nginx sample when present (proxies /sitemap.xml → Express :3100)
-NGINX_SRC="$ROOT_DIR/deploy/nginx-glambaddies.conf"
-if [ -f "$NGINX_SRC" ] && command -v nginx >/dev/null 2>&1; then
-  for NGINX_DST in \
-    /etc/nginx/sites-available/glambaddies \
-    /etc/nginx/sites-available/glambaddies.com \
-    /etc/nginx/sites-available/www.glambaddies.com
-  do
-    if [ -f "$NGINX_DST" ] || [ -L "$NGINX_DST" ]; then
-      sudo cp "$NGINX_SRC" "$NGINX_DST"
-      if sudo nginx -t; then
-        sudo systemctl reload nginx || sudo nginx -s reload || true
-        echo "Reloaded nginx with $NGINX_DST"
-      else
-        echo "nginx -t failed after copying $NGINX_SRC → $NGINX_DST (left unchanged check needed)"
-      fi
-      break
-    fi
-  done
-fi
+# NOTE: Do NOT overwrite /etc/nginx here. Server nginx is managed on the VPS.
+# Repo file deploy/nginx-glambaddies.conf is a reference sample only — copy it
+# manually if you intentionally want to replace the live site config.
 
 # Always write a static sitemap into dist so /sitemap.xml works even if
 # the nginx proxy location is not installed yet.
