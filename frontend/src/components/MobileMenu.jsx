@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Link, useLocation } from 'react-router-dom'
 import { ChevronDown, X } from 'lucide-react'
 import { groupCategories } from '../utils'
+import { FALLBACK_CATEGORIES } from './CollectionsDropdown'
 
 export function MobileMenu({ open, onClose, categories = [] }) {
   const location = useLocation()
@@ -9,7 +10,8 @@ export function MobileMenu({ open, onClose, categories = [] }) {
   const [closing, setClosing] = useState(false)
   const [collectionsOpen, setCollectionsOpen] = useState(true)
   const category = new URLSearchParams(location.search).get('category')
-  const { dresses, accessories, other } = groupCategories(categories)
+  const source = Array.isArray(categories) && categories.length ? categories : FALLBACK_CATEGORIES
+  const { dresses, accessories, other } = groupCategories(source)
 
   useEffect(() => {
     if (open) {
@@ -31,7 +33,7 @@ export function MobileMenu({ open, onClose, categories = [] }) {
       const timer = window.setTimeout(() => {
         setMounted(false)
         setClosing(false)
-      }, 280)
+      }, 160)
       return () => window.clearTimeout(timer)
     }
     return undefined
@@ -49,13 +51,6 @@ export function MobileMenu({ open, onClose, categories = [] }) {
   if (!mounted) return null
 
   const shopActive = location.pathname === '/shop' && !category
-  let stagger = 0
-  const nextDelay = () => {
-    const delay = stagger * 40
-    stagger += 1
-    return delay
-  }
-
   const go = () => onClose()
   const featuredImage = dresses[0]?.home_image_url
     || dresses[0]?.image_url
@@ -89,7 +84,6 @@ export function MobileMenu({ open, onClose, categories = [] }) {
           <Link
             to="/shop"
             className={`mobile-nav-link${shopActive ? ' is-active' : ''}`}
-            style={{ '--stagger': `${nextDelay()}ms` }}
             onClick={go}
           >
             <span>New arrivals</span>
@@ -97,7 +91,7 @@ export function MobileMenu({ open, onClose, categories = [] }) {
           </Link>
 
           {hasCollections ? (
-            <div className="mobile-collections" style={{ '--stagger': `${nextDelay()}ms` }}>
+            <div className="mobile-collections">
               <button
                 type="button"
                 className={`mobile-collections-toggle${collectionsOpen ? ' is-open' : ''}${categoryActive ? ' is-active' : ''}`}
@@ -115,12 +109,11 @@ export function MobileMenu({ open, onClose, categories = [] }) {
                       {dresses.length ? (
                         <div className="nav-group">
                           <p className="nav-group-label">Dresses</p>
-                          {dresses.map((item, index) => (
+                          {dresses.map((item) => (
                             <Link
                               key={item.slug}
                               to={`/shop?category=${encodeURIComponent(item.slug)}`}
                               className={category === item.slug ? 'active' : undefined}
-                              style={{ '--stagger': `${80 + index * 45}ms` }}
                               onClick={go}
                             >
                               {item.name}
@@ -131,12 +124,11 @@ export function MobileMenu({ open, onClose, categories = [] }) {
                       {(accessories.length || other.length) ? (
                         <div className="nav-group">
                           <p className="nav-group-label">{accessories.length ? 'Accessories' : 'More'}</p>
-                          {[...accessories, ...other].map((item, index) => (
+                          {[...accessories, ...other].map((item) => (
                             <Link
                               key={item.slug}
                               to={`/shop?category=${encodeURIComponent(item.slug)}`}
                               className={category === item.slug ? 'active' : undefined}
-                              style={{ '--stagger': `${100 + index * 45}ms` }}
                               onClick={go}
                             >
                               {item.name}
@@ -145,12 +137,7 @@ export function MobileMenu({ open, onClose, categories = [] }) {
                         </div>
                       ) : null}
                     </div>
-                    <Link
-                      to="/shop?sort=newest"
-                      className="mobile-collections-feature"
-                      style={{ '--stagger': '220ms' }}
-                      onClick={go}
-                    >
+                    <Link to="/shop?sort=newest" className="mobile-collections-feature" onClick={go}>
                       <img src={featuredImage} alt="" />
                       <span>New in →</span>
                     </Link>
@@ -163,9 +150,16 @@ export function MobileMenu({ open, onClose, categories = [] }) {
           <div className="mobile-nav-divider" aria-hidden="true" />
 
           <Link
+            to="/wishlist"
+            className={`mobile-nav-link${location.pathname === '/wishlist' ? ' is-active' : ''}`}
+            onClick={go}
+          >
+            <span>Wishlist</span>
+            <span className="mobile-nav-arrow" aria-hidden="true">→</span>
+          </Link>
+          <Link
             to="/about"
             className={`mobile-nav-link${location.pathname === '/about' ? ' is-active' : ''}`}
-            style={{ '--stagger': `${nextDelay()}ms` }}
             onClick={go}
           >
             <span>Our story</span>
@@ -174,7 +168,6 @@ export function MobileMenu({ open, onClose, categories = [] }) {
           <Link
             to="/track-order"
             className={`mobile-nav-link${location.pathname === '/track-order' ? ' is-active' : ''}`}
-            style={{ '--stagger': `${nextDelay()}ms` }}
             onClick={go}
           >
             <span>Track order</span>

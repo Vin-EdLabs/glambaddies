@@ -1,13 +1,23 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link, useLocation } from 'react-router-dom'
-import { groupCategories } from '../utils'
+import { ACCESSORY_CATEGORY_SLUGS, DRESS_CATEGORY_SLUGS, groupCategories } from '../utils'
 
 const CLOSE_DELAY_MS = 160
+
+export const FALLBACK_CATEGORIES = [
+  { id: 'fb-casual', name: 'Casual Dresses', slug: 'casual-dresses' },
+  { id: 'fb-party', name: 'Party Dresses', slug: 'party-dresses' },
+  { id: 'fb-school', name: 'School Dresses', slug: 'school-dresses' },
+  { id: 'fb-bags', name: 'Bags', slug: 'bags' },
+  { id: 'fb-shoes', name: 'Shoes', slug: 'shoes' },
+  { id: 'fb-beauty', name: 'Beauty & Accessories', slug: 'beauty' },
+]
 
 export function CollectionsDropdown({ categories = [] }) {
   const location = useLocation()
   const category = new URLSearchParams(location.search).get('category')
-  const { dresses, accessories, other } = groupCategories(categories)
+  const source = Array.isArray(categories) && categories.length ? categories : FALLBACK_CATEGORIES
+  const { dresses, accessories, other } = groupCategories(source)
   const [open, setOpen] = useState(false)
   const closeTimer = useRef(0)
   const rootRef = useRef(null)
@@ -30,12 +40,17 @@ export function CollectionsDropdown({ categories = [] }) {
     setOpen(false)
   }, [location.pathname, location.search])
 
-  if (!dresses.length && !accessories.length && !other.length) return null
+  const dressList = dresses.length
+    ? dresses
+    : FALLBACK_CATEGORIES.filter((item) => DRESS_CATEGORY_SLUGS.includes(item.slug))
+  const accessoryList = (accessories.length || other.length)
+    ? [...accessories, ...other]
+    : FALLBACK_CATEGORIES.filter((item) => ACCESSORY_CATEGORY_SLUGS.includes(item.slug))
 
-  const featuredImage = dresses[0]?.home_image_url
-    || dresses[0]?.image_url
-    || accessories[0]?.home_image_url
-    || accessories[0]?.image_url
+  const featuredImage = dressList[0]?.home_image_url
+    || dressList[0]?.image_url
+    || accessoryList[0]?.home_image_url
+    || accessoryList[0]?.image_url
     || '/edit-party.jpg'
 
   return (
@@ -74,40 +89,36 @@ export function CollectionsDropdown({ categories = [] }) {
         onMouseLeave={scheduleClose}
       >
         <div className="nav-collections-columns">
-          {dresses.length ? (
-            <div className="nav-group">
-              <p className="nav-group-label">Dresses</p>
-              {dresses.map((item) => (
-                <Link
-                  key={item.slug}
-                  to={`/shop?category=${encodeURIComponent(item.slug)}`}
-                  className={category === item.slug ? 'active' : undefined}
-                  onClick={() => setOpen(false)}
-                >
-                  {item.name}
-                </Link>
-              ))}
-            </div>
-          ) : null}
-          {(accessories.length || other.length) ? (
-            <div className="nav-group">
-              <p className="nav-group-label">{accessories.length ? 'Accessories' : 'More'}</p>
-              {[...accessories, ...other].map((item) => (
-                <Link
-                  key={item.slug}
-                  to={`/shop?category=${encodeURIComponent(item.slug)}`}
-                  className={category === item.slug ? 'active' : undefined}
-                  onClick={() => setOpen(false)}
-                >
-                  {item.name}
-                </Link>
-              ))}
-            </div>
-          ) : null}
+          <div className="nav-group">
+            <p className="nav-group-label">Dresses</p>
+            {dressList.map((item) => (
+              <Link
+                key={item.slug}
+                to={`/shop?category=${encodeURIComponent(item.slug)}`}
+                className={category === item.slug ? 'active' : undefined}
+                onClick={() => setOpen(false)}
+              >
+                {item.name}
+              </Link>
+            ))}
+          </div>
+          <div className="nav-group">
+            <p className="nav-group-label">Accessories</p>
+            {accessoryList.map((item) => (
+              <Link
+                key={item.slug}
+                to={`/shop?category=${encodeURIComponent(item.slug)}`}
+                className={category === item.slug ? 'active' : undefined}
+                onClick={() => setOpen(false)}
+              >
+                {item.name}
+              </Link>
+            ))}
+          </div>
         </div>
-        <Link to="/shop?sort=newest" className="nav-collections-feature" onClick={() => setOpen(false)}>
+        <Link to="/shop" className="nav-collections-feature" onClick={() => setOpen(false)}>
           <img src={featuredImage} alt="" />
-          <span>New in →</span>
+          <span>Shop all →</span>
         </Link>
       </div>
     </div>

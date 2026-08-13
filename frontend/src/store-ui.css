@@ -726,7 +726,7 @@
   grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)) !important;
 }
 
-/* Home category rows — classic boutique layout */
+/* Home category rows â classic boutique layout */
 .section.home-category {
   border-bottom: 1px solid var(--line);
   padding: 5.5rem 5vw;
@@ -759,7 +759,7 @@
   font-size: 0.98rem;
   line-height: 1.65;
 }
-.home-category-grid {
+.home-category-products {
   margin-top: 0.5rem;
 }
 .home-category-foot {
@@ -947,7 +947,7 @@
   }
 }
 
-/* Admin polish ÃÂ GlamBaddies */
+/* Admin polish ÃÂÃÂ GlamBaddies */
 .admin-nav-section {
   margin: 1rem 0.9rem 0.35rem;
   font-size: 0.62rem;

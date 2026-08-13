@@ -47,17 +47,26 @@ app.options('*', cors(corsOptions));
 
 const WINDOW_MS = 15 * 60 * 1000;
 
-/** Storefront browsing — generous so normal page loads are never blocked. */
+/** Storefront browsing — keep POST/PUT protected; never throttle catalogue GETs. */
 const apiLimiter = rateLimit({
   windowMs: WINDOW_MS,
-  max: 500,
+  max: Number(process.env.API_RATE_LIMIT || 2000),
   standardHeaders: true,
   legacyHeaders: false,
   message: 'Too many requests, please try again later.',
-  skip: (req) =>
-    req.method === 'OPTIONS' ||
-    String(req.originalUrl || '').startsWith('/api/webhook') ||
-    String(req.originalUrl || '').startsWith('/api/health'),
+  skip: (req) => {
+    if (req.method === 'OPTIONS') return true;
+    const url = String(req.originalUrl || req.url || '');
+    if (url.startsWith('/api/webhook') || url.startsWith('/api/health')) return true;
+    // Catalogue reads (products/categories/store status) must never 429 the shop.
+    if (req.method === 'GET' && (
+      url.startsWith('/api/products')
+      || url.startsWith('/api/categories')
+      || url.startsWith('/api/store/')
+    )) return true;
+    if (process.env.NODE_ENV !== 'production') return true;
+    return false;
+  },
 });
 
 /** Auth endpoints — stricter to limit brute force. */

@@ -2,9 +2,9 @@ import { useEffect } from 'react'
 import { BrowserRouter, Navigate, Route, Routes, useLocation } from 'react-router-dom'
 import { Toaster } from 'react-hot-toast'
 import { AdminLayout, StoreLayout } from './components'
-import { AuthProvider, CartProvider, ThemeProvider } from './contexts'
+import { AuthProvider, CartProvider, ThemeProvider, WishlistProvider } from './contexts'
 import { ADMIN_PATH } from './adminPath'
-import { About, Account, Checkout, Home, InfoPage, Login, NotFound, OrderConfirmation, PaymentVerify, ProductDetail, Shop, TrackOrder } from './pages/StorePages'
+import { About, Account, Checkout, Home, InfoPage, Login, NotFound, OrderConfirmation, PaymentVerify, ProductDetail, Shop, TrackOrder, Wishlist } from './pages/StorePages'
 import { AdminCategories, AdminCustomers, AdminLogin, AdminNewsletter, AdminOrderDetail, AdminOrders, AdminProducts, AdminRider, AdminSettings, Analytics, Dashboard, ProductForm } from './pages/AdminPages'
 
 function SmoothScrollManager() {
@@ -34,13 +34,14 @@ function LegacyAdminRedirect() {
 }
 
 export default function App() {
-  return <BrowserRouter><ThemeProvider><AuthProvider><CartProvider>
+  return <BrowserRouter><ThemeProvider><AuthProvider><WishlistProvider><CartProvider>
     <SmoothScrollManager />
     <Routes>
       <Route element={<StoreLayout />}>
         <Route index element={<Home />} />
         <Route path="shop" element={<Shop />} />
         <Route path="products/:id" element={<ProductDetail />} />
+        <Route path="wishlist" element={<Wishlist />} />
         <Route path="checkout" element={<Checkout />} />
         <Route path="payment/verify" element={<PaymentVerify />} />
         <Route path="order-confirmation" element={<OrderConfirmation />} />
@@ -77,5 +78,5 @@ export default function App() {
       <Route path="/admin" element={<Navigate to="/" replace />} />
     </Routes>
     <Toaster position="top-center" toastOptions={{ duration: 3000 }} />
-  </CartProvider></AuthProvider></ThemeProvider></BrowserRouter>
+  </CartProvider></WishlistProvider></AuthProvider></ThemeProvider></BrowserRouter>
 }

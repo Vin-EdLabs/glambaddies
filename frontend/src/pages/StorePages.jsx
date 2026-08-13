@@ -6,7 +6,7 @@ import { ArrowLeft, ArrowRight, Check, ChevronDown, Clock3, Filter, Heart, MapPi
 import { EmptyState, ErrorState, LoadingGrid, PasswordInput, ProductCard, CopyValue } from '../components'
 import SEO from '../components/SEO'
 import { ProductImageGallery } from '../ProductImageGallery'
-import { useAuth, useCart } from '../contexts'
+import { useAuth, useCart, useWishlist } from '../contexts'
 import api, { asArray, errorMessage, getProductCacheRev, mapProduct, mapProducts, resolveImageUrl, syncCatalogueRevision } from '../services/api'
 import { formatCurrency, groupCategories } from '../utils'
 import { DRESS_COLORS, DRESS_SIZES } from '../dressOptions'
@@ -42,15 +42,18 @@ function useProductCacheRev() {
     window.addEventListener('glam:products-changed', sync)
     window.addEventListener('storage', sync)
     window.addEventListener('focus', onFocus)
-    document.addEventListener('visibilitychange', () => {
+    const onVisibility = () => {
       if (document.visibilityState === 'visible') onFocus()
-    })
+    }
+    document.addEventListener('visibilitychange', onVisibility)
+    // One sync on mount; avoid hammering /store/status (was causing 429s).
     onFocus()
-    const timer = window.setInterval(onFocus, 30000)
+    const timer = window.setInterval(onFocus, 120000)
     return () => {
       window.removeEventListener('glam:products-changed', sync)
       window.removeEventListener('storage', sync)
       window.removeEventListener('focus', onFocus)
+      document.removeEventListener('visibilitychange', onVisibility)
       window.clearInterval(timer)
     }
   }, [])
@@ -144,7 +147,7 @@ export function Home() {
           group: item.group,
           eyebrow: live?.home_eyebrow || item.eyebrow,
           title: live?.home_title || item.title,
-          image_url: item.image,
+          image_url: live?.home_image_url || item.image,
         }
       })
 
@@ -175,7 +178,18 @@ export function Home() {
 
   const categories = asArray(data?.sections)
 
-  const featureTiles = asArray(data?.features).map((feature, index) => {
+  // Always show category tiles (even while catalogue rows load / on API error).
+  const featureSource = asArray(data?.features).length
+    ? asArray(data.features)
+    : HOME_CATEGORY_SHOWCASE.map((item) => ({
+        category_slug: item.slug,
+        eyebrow: item.eyebrow,
+        title: item.title,
+        group: item.group,
+        image_url: item.image,
+      }))
+
+  const featureTiles = featureSource.map((feature, index) => {
     const fallback = HOME_CATEGORY_SHOWCASE[index] || HOME_CATEGORY_SHOWCASE[0]
     const slug = feature.category_slug || fallback.slug
     const eyebrow = feature.eyebrow || fallback.eyebrow
@@ -195,14 +209,14 @@ export function Home() {
   })
 
   const collectionLine = asArray(data?.categoryNames).length
-    ? `${asArray(data.categoryNames).join(', ')} — every GlamBaddies dress in one place.`
-    : 'Every GlamBaddies dress in one place.'
+    ? `${asArray(data.categoryNames).join(', ')} — the full GlamBaddies edit in one place.`
+    : 'The full GlamBaddies edit in one place.'
 
   return (
     <>
       <SEO
-        title="Girls Dresses in Ghana"
-        description="Shop the latest girls dresses at GlamBaddies. Discover every category and find looks delivered across Ghana."
+        title="Girls Fashion in Ghana"
+        description="Shop GlamBaddies — girls' dresses, bags, shoes and beauty, delivered across Ghana."
         url={`${SITE_URL}/`}
       />
 
@@ -212,8 +226,8 @@ export function Home() {
           <div className="hero-copy">
             <img className="hero-brand" src="/logo.png" alt="GlamBaddies — Shop. Slay. Shine." />
             <h1>Shop. Slay.<br /><em>Shine.</em></h1>
-            <p>Girls&apos; dresses only — bold, glamorous looks made to turn heads.</p>
-            <Link className="button light-button" to="/shop">Shop the latest girls&apos; dresses <ArrowRight /></Link>
+            <p>Bold glam for girls — dresses, bags, shoes and beauty made to turn heads.</p>
+            <Link className="button light-button" to="/shop">Shop the collection <ArrowRight /></Link>
           </div>
         </div>
       </section>
@@ -266,7 +280,7 @@ export function Home() {
               </Link>
             </div>
 
-            <div className="product-grid home-category-grid">
+            <div className="product-grid home-category-products">
               {category.products.map((product) => (
                 <ProductCard product={product} key={product.id} />
               ))}
@@ -284,7 +298,7 @@ export function Home() {
       <section className="home-shop-all" aria-label="Shop every dress">
         <div className="home-shop-all-inner">
           <span className="eyebrow">The full collection</span>
-          <h2>Shop all dresses</h2>
+          <h2>Shop the collection</h2>
           <p>{collectionLine}</p>
           <Link className="browse-all browse-all--solid" to="/shop">
             Shop all
@@ -320,7 +334,7 @@ export function Shop() {
   const { data, loading, error, retry } = useApi(
     () => Promise.all([
       api.get('/products', { params: { category: category || undefined, q: query || undefined, sort, limit: 100 } }),
-      api.get('/categories'),
+      api.get('/categories').catch(() => ({ data: { categories: [] } })),
     ]).then(([productsResult, categoriesResult]) => {
       if (productsResult.data?.revision != null) {
         try { localStorage.setItem('glam_products_rev', String(productsResult.data.revision)) } catch { /* ignore */ }
@@ -328,7 +342,7 @@ export function Shop() {
       return {
         products: mapProducts(productsResult.data?.products),
         pagination: productsResult.data?.pagination || { total: 0 },
-        categories: asArray(categoriesResult.data?.categories),
+        categories: asArray(categoriesResult.data?.categories).filter((item) => !isTestCategory(item)),
       }
     }),
     [requestKey],
@@ -340,11 +354,11 @@ export function Shop() {
   const title = categories.find((item) => item.slug === category)?.name || (query ? `Results for “${query}”` : 'Shop all')
   return <div className="shop-page">
     <SEO
-      title="Shop All Dresses"
-      description="Browse casual, party, and school dresses at GlamBaddies — girls' fashion delivered across Ghana."
+      title="Shop the Collection"
+      description="Browse dresses, bags, shoes and beauty at GlamBaddies — girls' fashion delivered across Ghana."
       url={`${SITE_URL}/shop`}
     />
-    <div className="page-title"><span className="eyebrow">The collection</span><h1>{title}</h1><p>Shop the latest girls&apos; dresses — curated for every occasion.</p></div>
+    <div className="page-title"><span className="eyebrow">The collection</span><h1>{title}</h1><p>Dresses, bags, shoes &amp; beauty — curated for every occasion.</p></div>
     <div className="shop-category-pills" aria-label="Categories">
       <Link className={`shop-pill${!category ? ' is-active' : ''}`} to="/shop">All</Link>
       {pillCategories.map((item) => (
@@ -359,7 +373,7 @@ export function Shop() {
     </div>
     <div className="catalog-toolbar"><button onClick={() => setMobileFilters(true)}><Filter /> Filters</button><span>{data?.pagination?.total || 0} pieces</span><label>Sort by <select value={sort} onChange={(event) => setSort(event.target.value)}><option value="newest">Featured</option><option value="price_asc">Price: low to high</option><option value="price_desc">Price: high to low</option><option value="name_asc">Name</option></select><ChevronDown /></label></div>
     <div className="catalog"><aside className={mobileFilters ? 'open' : ''}><button className="filter-close" onClick={() => setMobileFilters(false)}><X /></button><FilterGroup title="Category" values={categories} active={category} /></aside>
-      {loading ? <LoadingGrid /> : error ? <ErrorState retry={retry} /> : products.length ? <div className="product-grid">{products.map((product) => <ProductCard product={product} key={product.id} />)}</div> : <EmptyState title="No pieces found" text="Try changing your filters or search phrase." action="View all products" to="/shop" />}</div>
+      {loading ? <LoadingGrid /> : error ? <ErrorState retry={retry} /> : products.length ? <div className="product-grid">{products.map((product) => <ProductCard product={product} key={product.id} />)}</div> : <EmptyState title={category ? `No ${title} yet` : 'No pieces found'} text={category ? 'New pieces for this category will show up here soon. Browse the full shop meanwhile.' : 'Try changing your filters or search phrase.'} action="View all products" to="/shop" />}</div>
   </div>
 }
 
@@ -370,6 +384,7 @@ function FilterGroup({ title, values, active }) {
 export function ProductDetail() {
   const { id } = useParams()
   const { addItem } = useCart()
+  const { hasItem, toggleItem } = useWishlist()
   const [size, setSize] = useState('')
   const [color, setColor] = useState('')
   const productsRev = useProductCacheRev()
@@ -447,7 +462,15 @@ export function ProductDetail() {
           </div>
         </div>
         <button className="button full" disabled={!product.stock} onClick={add}>{product.stock ? 'Add to bag' : 'Sold out'} <ShoppingBag /></button>
-        <button className="wishlist" type="button"><Heart /> Add to wishlist</button>
+        <button
+          className={`wishlist${hasItem(product.id) ? ' is-saved' : ''}`}
+          type="button"
+          aria-pressed={hasItem(product.id)}
+          onClick={() => toggleItem(product)}
+        >
+          <Heart fill={hasItem(product.id) ? 'currentColor' : 'none'} />
+          {hasItem(product.id) ? 'Saved to wishlist' : 'Add to wishlist'}
+        </button>
         <details open><summary>Details & composition <Plus /></summary><p>{product.description || 'Thoughtfully made from premium materials.'}</p></details>
         <details><summary>Delivery & returns <Plus /></summary><p>Choose pickup or delivery at checkout. Returns accepted within 14 days.</p></details>
         <details open><summary>Track your order <Plus /></summary><p>Use the phone number from checkout anytime on the <Link to="/track-order">Track order</Link> page — no sign-in needed.</p></details>
@@ -1139,6 +1162,75 @@ export function Login({ register = false }) {
           <Link className="text-link" to="/shop">Continue shopping</Link>
         </div>
       </form>
+    </div>
+  )
+}
+
+export function Wishlist() {
+  const { items, removeItem, clearWishlist } = useWishlist()
+  const { addItem } = useCart()
+
+  return (
+    <div className="section wishlist-page">
+      <SEO
+        title="Wishlist"
+        description="Your saved GlamBaddies pieces."
+        url={`${SITE_URL}/wishlist`}
+        noindex
+      />
+      <div className="section-head">
+        <div>
+          <span className="eyebrow">Saved for later</span>
+          <h2>Wishlist</h2>
+          <p>{items.length ? `${items.length} saved piece${items.length === 1 ? '' : 's'}` : 'Tap the heart on any piece to save it quietly.'}</p>
+        </div>
+        {items.length ? (
+          <button type="button" className="text-button" onClick={clearWishlist}>Clear all</button>
+        ) : null}
+      </div>
+      {items.length ? (
+        <div className="product-grid">
+          {items.map((product) => (
+            <article className="product-card" key={product.id}>
+              <Link to={`/products/${product.slug || product.id}`} className="product-image">
+                {product.badge ? <span className="badge sale-badge">{product.badge}</span> : null}
+                <img src={product.image} alt={product.name} loading="lazy" />
+                <button
+                  type="button"
+                  className="heart is-saved"
+                  aria-label="Remove from wishlist"
+                  onClick={(event) => {
+                    event.preventDefault()
+                    event.stopPropagation()
+                    removeItem(product.id)
+                  }}
+                >
+                  <Heart size={18} fill="currentColor" />
+                </button>
+              </Link>
+              <div className="product-info">
+                <p className="eyebrow">{product.brand || 'GlamBaddies'}</p>
+                <Link to={`/products/${product.slug || product.id}`}>{product.name}</Link>
+                <div className="product-price-row">
+                  {product.oldPrice ? <del>{formatCurrency(product.oldPrice)}</del> : null}
+                  <strong className={product.is_on_sale ? 'sale-price' : undefined}>{formatCurrency(product.price)}</strong>
+                </div>
+                <button type="button" className="quick-add" onClick={() => addItem(product)}>
+                  Quick add <Plus size={14} />
+                </button>
+              </div>
+            </article>
+          ))}
+        </div>
+      ) : (
+        <EmptyState
+          icon={Heart}
+          title="Your wishlist is empty"
+          text="Browse the shop and tap the heart to save pieces — no alerts, just a quiet save."
+          action="Shop all"
+          to="/shop"
+        />
+      )}
     </div>
   )
 }

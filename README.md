@@ -2,7 +2,7 @@
 
 Girls' fashion e-commerce — **girls' dresses only**. Prices and Paystack charges are in **GHS** (no USD conversion).
 
-
+node backend/scripts/apply-sql.js database/migrate-bags-shoes-beauty-products.sql
 
 cd /var/www/glambaddies && git pull
 cd backend && npm install && npm run build

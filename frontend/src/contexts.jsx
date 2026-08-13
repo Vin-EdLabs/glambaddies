@@ -5,8 +5,10 @@ import api from './services/api'
 const CartContext = createContext(null)
 const AuthContext = createContext(null)
 const ThemeContext = createContext(null)
+const WishlistContext = createContext(null)
 
 const THEME_KEY = 'glam_theme'
+const WISHLIST_KEY = 'glam_wishlist'
 
 const readCart = () => {
   try {
@@ -44,6 +46,76 @@ export function ThemeProvider({ children }) {
     <ThemeContext.Provider value={{ theme, setTheme, toggleTheme, isDark: theme === 'dark' }}>
       {children}
     </ThemeContext.Provider>
+  )
+}
+
+const readWishlist = () => {
+  try {
+    const saved = JSON.parse(localStorage.getItem(WISHLIST_KEY) || '[]')
+    return Array.isArray(saved) ? saved.filter((item) => item?.id) : []
+  } catch {
+    return []
+  }
+}
+
+export function WishlistProvider({ children }) {
+  const [items, setItems] = useState(() => readWishlist())
+  const safeItems = Array.isArray(items) ? items : []
+
+  const commit = (next) => {
+    const list = Array.isArray(next) ? next : []
+    setItems(list)
+    try {
+      localStorage.setItem(WISHLIST_KEY, JSON.stringify(list))
+    } catch {
+      /* ignore */
+    }
+  }
+
+  const hasItem = (productId) => safeItems.some((item) => String(item.id) === String(productId))
+
+  const toggleItem = (product) => {
+    if (!product?.id) return false
+    if (hasItem(product.id)) {
+      commit(safeItems.filter((item) => String(item.id) !== String(product.id)))
+      return false
+    }
+    commit([
+      {
+        id: String(product.id),
+        slug: product.slug,
+        name: product.name,
+        brand: product.brand || product.category,
+        price: Number(product.price),
+        oldPrice: product.oldPrice,
+        image: product.image,
+        is_on_sale: Boolean(product.is_on_sale),
+        badge: product.badge,
+      },
+      ...safeItems,
+    ])
+    return true
+  }
+
+  const removeItem = (productId) => {
+    commit(safeItems.filter((item) => String(item.id) !== String(productId)))
+  }
+
+  const clearWishlist = () => commit([])
+
+  return (
+    <WishlistContext.Provider
+      value={{
+        items: safeItems,
+        count: safeItems.length,
+        hasItem,
+        toggleItem,
+        removeItem,
+        clearWishlist,
+      }}
+    >
+      {children}
+    </WishlistContext.Provider>
   )
 }
 
@@ -135,3 +207,5 @@ export const useCart = () => useContext(CartContext)
 export const useAuth = () => useContext(AuthContext)
 // oxlint-disable-next-line react/only-export-components
 export const useTheme = () => useContext(ThemeContext)
+// oxlint-disable-next-line react/only-export-components
+export const useWishlist = () => useContext(WishlistContext)

@@ -154,12 +154,20 @@ export const getProductCacheRev = () => {
   }
 }
 
+let lastCatalogueSyncAt = 0
+const CATALOGUE_SYNC_MIN_MS = 60_000
+
 /** Sync catalogue revision from the API (works across devices/browsers). */
-export const syncCatalogueRevision = async () => {
+export const syncCatalogueRevision = async ({ force = false } = {}) => {
+  const now = Date.now()
+  if (!force && now - lastCatalogueSyncAt < CATALOGUE_SYNC_MIN_MS) {
+    return getProductCacheRev()
+  }
+  lastCatalogueSyncAt = now
   try {
     const { data } = await api.get('/store/status', {
       headers: { 'Cache-Control': 'no-cache', Pragma: 'no-cache' },
-      params: { _ts: Date.now() },
+      params: { _ts: now },
     })
     const revision = data?.catalogue_revision
     if (revision != null && String(revision) !== getProductCacheRev()) {

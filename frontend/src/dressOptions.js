@@ -18,4 +18,4 @@ export const DRESS_COLORS = [
   { name: 'Leopard print', value: '#C4A484', pattern: true },
 ]
 
-export const DRESS_SIZES = ['6', '8', '10', '14']
+export const DRESS_SIZES = ['6', '8', '10', '12', '14']

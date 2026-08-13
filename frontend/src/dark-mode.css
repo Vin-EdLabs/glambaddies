@@ -36,6 +36,10 @@ html[data-theme="dark"] .announcement {
   border-bottom: 0;
 }
 
+html[data-theme="dark"] .header-actions {
+  border-left-color: rgba(255, 255, 255, 0.12);
+}
+
 html[data-theme="dark"] .site-header {
   background: rgba(17, 17, 17, 0.96);
   border-bottom-color: #2e2e2e;
@@ -563,8 +567,37 @@ html[data-theme="dark"] .admin-profile-menu button:hover {
 }
 
 html[data-theme="dark"] .theme-toggle {
-  color: #f0f0f0;
-  border-color: #444;
+  color: #ff69b4;
+  border-color: rgba(233, 30, 140, 0.55);
+  background: rgba(233, 30, 140, 0.12);
+}
+
+html[data-theme="dark"] .site-header .header-left .header-search,
+html[data-theme="dark"] .site-header .header-left .mobile-menu,
+html[data-theme="dark"] .site-header .header-left .theme-toggle,
+html[data-theme="dark"] .site-header .header-left .header-theme {
+  color: #ff69b4 !important;
+  border: 0 !important;
+  background: transparent !important;
+  opacity: 1;
+}
+
+html[data-theme="dark"] .site-header .header-left .header-search svg,
+html[data-theme="dark"] .site-header .header-left .mobile-menu svg,
+html[data-theme="dark"] .site-header .header-left .theme-toggle svg,
+html[data-theme="dark"] .site-header .header-left .header-theme svg {
+  color: #ff69b4 !important;
+  stroke: #ff69b4 !important;
+}
+
+html[data-theme="dark"] .site-header .header-left .header-search:hover,
+html[data-theme="dark"] .site-header .header-left .header-search:hover svg,
+html[data-theme="dark"] .site-header .header-left .theme-toggle:hover,
+html[data-theme="dark"] .site-header .header-left .header-theme:hover,
+html[data-theme="dark"] .site-header .header-left .theme-toggle:hover svg,
+html[data-theme="dark"] .site-header .header-left .header-theme:hover svg {
+  color: #ffffff !important;
+  stroke: #ffffff !important;
 }
 
 html[data-theme="dark"] .media-tile {

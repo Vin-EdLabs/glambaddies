@@ -3,13 +3,13 @@ import { createPortal } from 'react-dom'
 import { Link, Navigate, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import toast from 'react-hot-toast'
 import { ArrowRight, BarChart3, Bike, Box, Check, ChevronDown, Copy, Eye, EyeOff, Heart, LayoutDashboard, LogOut, Mail, Menu, Minus, Moon, Package, Plus, Search, Settings, ShoppingBag, Sun, Tag, Trash2, User, Users, X } from 'lucide-react'
-import { useAuth, useCart, useTheme } from './contexts'
+import { useAuth, useCart, useTheme, useWishlist } from './contexts'
 import { formatCurrency } from './utils'
 import api, { asArray, errorMessage } from './services/api'
 import { ADMIN_PATH } from './adminPath'
 import { SearchOverlay } from './components/SearchOverlay'
 import { MobileMenu } from './components/MobileMenu'
-import { CollectionsDropdown } from './components/CollectionsDropdown'
+import { CollectionsDropdown, FALLBACK_CATEGORIES } from './components/CollectionsDropdown'
 
 export function CopyValue({ value, label = 'Copy' }) {
   const [copied, setCopied] = useState(false)
@@ -58,14 +58,28 @@ export function PasswordInput({ name = 'password', minLength = 8, autoComplete =
 
 export function ProductCard({ product }) {
   const { addItem } = useCart()
+  const wishlist = useWishlist()
   const [imageBroken, setImageBroken] = useState(false)
+  const saved = Boolean(wishlist?.hasItem?.(product.id))
   // A product without a working photo looks unprofessional — drop the card entirely.
   if (imageBroken || !product.image) return null
   return <article className={`product-card${product.is_on_sale ? ' is-on-sale' : ''}`}>
     <Link to={`/products/${product.slug || product.id}`} className="product-image">
       {product.badge ? <span className="badge sale-badge">{product.badge}</span> : null}
       <img src={product.image} alt={product.name} loading="lazy" onError={() => setImageBroken(true)} />
-      <button className="heart" aria-label="Save product"><Heart size={18} /></button>
+      <button
+        type="button"
+        className={`heart${saved ? ' is-saved' : ''}`}
+        aria-label={saved ? 'Remove from wishlist' : 'Add to wishlist'}
+        aria-pressed={saved}
+        onClick={(event) => {
+          event.preventDefault()
+          event.stopPropagation()
+          wishlist?.toggleItem?.(product)
+        }}
+      >
+        <Heart size={18} fill={saved ? 'currentColor' : 'none'} />
+      </button>
     </Link>
     <div className="product-info">
       <p className="eyebrow">{product.brand || product.category}</p>
@@ -79,8 +93,17 @@ export function ProductCard({ product }) {
   </article>
 }
 
-export function EmptyState({ icon: Icon = Package, title, text, action, to = '/' }) {
-  return <div className="empty-state"><Icon size={36} strokeWidth={1.2} /><h2>{title}</h2><p>{text}</p>{action && <Link className="button" to={to}>{action}</Link>}</div>
+export function EmptyState({ icon: Icon = Package, title, text, action, to = '/', onAction }) {
+  return (
+    <div className="empty-state">
+      <Icon size={36} strokeWidth={1.2} />
+      <h2>{title}</h2>
+      <p>{text}</p>
+      {action ? (
+        <Link className="button" to={to} onClick={onAction}>{action}</Link>
+      ) : null}
+    </div>
+  )
 }
 
 export function LoadingGrid() {
@@ -213,19 +236,30 @@ export function CancelReasonDialog({
 
 function CartDrawer() {
   const { items, subtotal, isOpen, setIsOpen, removeItem, updateQuantity } = useCart()
+  const closeBag = () => setIsOpen(false)
   return <>
-    <div className={`drawer-overlay ${isOpen ? 'show' : ''}`} onClick={() => setIsOpen(false)} />
+    <div className={`drawer-overlay ${isOpen ? 'show' : ''}`} onClick={closeBag} />
     <aside className={`cart-drawer ${isOpen ? 'show' : ''}`} aria-hidden={!isOpen}>
-      <div className="drawer-head"><div><span className="eyebrow">Your selection</span><h2>Shopping bag</h2></div><button className="icon-button" onClick={() => setIsOpen(false)}><X /></button></div>
+      <div className="drawer-head"><div><span className="eyebrow">Your selection</span><h2>Shopping bag</h2></div><button className="icon-button" onClick={closeBag}><X /></button></div>
       <div className="drawer-items">
-        {!items.length ? <EmptyState icon={ShoppingBag} title="Your bag is empty" text="Discover pieces selected for a considered wardrobe." action="Shop new arrivals" to="/shop" /> :
+        {!items.length ? (
+          <EmptyState
+            icon={ShoppingBag}
+            title="Your bag is empty"
+            text="Browse dresses, bags, shoes and beauty — then add your favourites."
+            action="Shop all"
+            to="/shop"
+            onAction={closeBag}
+          />
+        ) : (
           items.map((item) => <div className="cart-row" key={item.key}>
             <img src={item.image} alt="" />
             <div><span className="eyebrow">{item.brand}</span><h4>{item.name}</h4>{(item.size || item.color) && <p>{[item.color, item.size && `Size ${item.size}`].filter(Boolean).join(' · ')}</p>}<div className="quantity"><button onClick={() => updateQuantity(item.key, item.quantity - 1)}><Minus size={13} /></button><span>{item.quantity}</span><button onClick={() => updateQuantity(item.key, item.quantity + 1)}><Plus size={13} /></button></div></div>
             <div className="cart-price"><strong>{formatCurrency(item.price * item.quantity)}</strong><button onClick={() => removeItem(item.key)}><Trash2 size={15} /></button></div>
-          </div>)}
+          </div>)
+        )}
       </div>
-      {!!items.length && <div className="drawer-foot"><div className="total-line"><span>Subtotal</span><strong>{formatCurrency(subtotal)}</strong></div><p>Delivery calculated at checkout.</p><Link className="button full" to="/checkout" onClick={() => setIsOpen(false)}>Checkout <ArrowRight size={16} /></Link></div>}
+      {!!items.length && <div className="drawer-foot"><div className="total-line"><span>Subtotal</span><strong>{formatCurrency(subtotal)}</strong></div><p>Delivery calculated at checkout.</p><Link className="button full" to="/checkout" onClick={closeBag}>Checkout <ArrowRight size={16} /></Link></div>}
     </aside>
   </>
 }
@@ -241,26 +275,31 @@ export function StoreLayout() {
   const snapchatHideTimer = useRef(0)
   const snapchatPaused = useRef(false)
   const cart = useCart()
+  const wishlist = useWishlist()
   const auth = useAuth()
   const theme = useTheme()
   const count = cart?.count || 0
+  const wishCount = wishlist?.count || 0
   const setIsOpen = cart?.setIsOpen || (() => {})
   const customer = auth?.customer
   const isDark = theme?.isDark
   const toggleTheme = theme?.toggleTheme || (() => {})
   const location = useLocation()
   const category = new URLSearchParams(location.search).get('category')
-  const [categories, setCategories] = useState([])
+  const [categories, setCategories] = useState(FALLBACK_CATEGORIES)
   useEffect(() => {
     api.get('/categories')
-      .then(({ data }) => setCategories(
-        asArray(data?.categories).filter((category) => {
+      .then(({ data }) => {
+        const live = asArray(data?.categories).filter((category) => {
           const slug = String(category?.slug || '').toLowerCase()
           const name = String(category?.name || '').toLowerCase()
           return !slug.includes('vincet') && !name.includes('vincet') && !slug.includes('test') && !name.includes('test')
-        }),
-      ))
-      .catch(() => setCategories([]))
+        })
+        if (live.length) setCategories(live)
+      })
+      .catch(() => {
+        /* keep fallback categories so Collections still shows on laptop */
+      })
   }, [])
   useEffect(() => {
     api.get('/store/status')
@@ -350,29 +389,41 @@ export function StoreLayout() {
     <div className="store-top">
       <div className="announcement">{announcement}</div>
       <header className="site-header">
-        <div className="header-left">
-          <button type="button" className="mobile-menu" onClick={() => setMenu(true)} aria-label="Open menu"><Menu /></button>
-          <button type="button" className="header-search" aria-label="Search" onClick={() => setSearchOpen(true)}><Search /></button>
+        <div className="header-start">
+          <div className="header-left">
+            <button type="button" className="mobile-menu" onClick={() => setMenu(true)} aria-label="Open menu"><Menu /></button>
+            <button type="button" className="header-search" aria-label="Search" onClick={() => setSearchOpen(true)}><Search /></button>
+            <button type="button" className="theme-toggle header-theme" onClick={toggleTheme} aria-label={isDark ? 'Switch to light mode' : 'Switch to dark mode'}>{isDark ? <Sun size={15} strokeWidth={2} /> : <Moon size={15} strokeWidth={2} />}</button>
+          </div>
+          <nav className="site-nav-desktop" aria-label="Primary">
+            <Link
+              to="/shop"
+              className={location.pathname === '/shop' && !category ? 'active' : undefined}
+            >
+              New arrivals
+            </Link>
+            <CollectionsDropdown categories={orderedCategories} />
+          </nav>
         </div>
         <Link className="logo" to="/" aria-label="GlamBaddies home">
           <img src="/logo.png" alt="" />
           <span className="logo-wordmark">GlamBaddies</span>
         </Link>
-        <nav className="site-nav-desktop" aria-label="Primary">
-          <Link
-            to="/shop"
-            className={location.pathname === '/shop' && !category ? 'active' : undefined}
-          >
-            New arrivals
-          </Link>
-          <CollectionsDropdown categories={orderedCategories} />
-        </nav>
         <div className="header-actions">
           <Link className={`header-story${location.pathname === '/about' ? ' active' : ''}`} to="/about">Our story</Link>
           <Link className={`header-story${location.pathname === '/track-order' ? ' active' : ''}`} to="/track-order">Track order</Link>
-          <button type="button" className="theme-toggle header-theme" onClick={toggleTheme} aria-label={isDark ? 'Switch to light mode' : 'Switch to dark mode'}>{isDark ? <Sun size={18} /> : <Moon size={18} />}</button>
-          <Link to={customer ? '/account' : '/login'} aria-label="Account"><User /></Link>
-          <button onClick={() => setIsOpen(true)} aria-label="Bag"><ShoppingBag /><span>{count}</span></button>
+          <div className="header-actions-end">
+            <Link
+              to="/wishlist"
+              className={`header-wishlist${location.pathname === '/wishlist' ? ' active' : ''}`}
+              aria-label="Wishlist"
+            >
+              <Heart size={18} />
+              {wishCount > 0 ? <span>{wishCount}</span> : null}
+            </Link>
+            <Link to={customer ? '/account' : '/login'} aria-label="Account"><User /></Link>
+            <button onClick={() => setIsOpen(true)} aria-label="Bag"><ShoppingBag /><span>{count}</span></button>
+          </div>
         </div>
       </header>
       <MobileMenu open={menu} onClose={() => setMenu(false)} categories={orderedCategories} />
@@ -384,7 +435,7 @@ export function StoreLayout() {
         <Link className="logo light" to="/" aria-label="GlamBaddies home">
           <img src="/logo.png" alt="GlamBaddies" />
         </Link>
-        <p>Shop the latest girls&apos; dresses — curated for every occasion.</p>
+        <p>Dresses, bags, shoes &amp; beauty — curated glam for every moment.</p>
         <div className="footer-social">
           <p className="footer-social-label">Connect with us</p>
           <div className="footer-social-row">
