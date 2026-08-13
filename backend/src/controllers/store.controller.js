@@ -156,6 +156,18 @@ async function ensureSettings() {
     ALTER TABLE store_settings
       ADD COLUMN IF NOT EXISTS homepage_features JSONB NOT NULL DEFAULT '[]'::jsonb
   `);
+  await db.query(`
+    ALTER TABLE store_settings
+      ADD COLUMN IF NOT EXISTS default_rider_name VARCHAR(120) NOT NULL DEFAULT ''
+  `);
+  await db.query(`
+    ALTER TABLE store_settings
+      ADD COLUMN IF NOT EXISTS default_rider_phone VARCHAR(40) NOT NULL DEFAULT ''
+  `);
+  await db.query(`
+    ALTER TABLE store_settings
+      ADD COLUMN IF NOT EXISTS default_rider_photo_url VARCHAR(500) NOT NULL DEFAULT ''
+  `);
 
   await db.query(`
     INSERT INTO store_settings (id, purchases_enabled)
@@ -319,6 +331,9 @@ function publicSettingsPayload(row) {
     usd_to_ghs_rate: Number.isFinite(rate) && rate > 0 ? rate : 15.5,
     announcement_text: String(row.announcement_text || 'Shop · Slay · Shine').slice(0, 120),
     homepage_features: normalizeHomepageFeatures(row.homepage_features),
+    default_rider_name: String(row.default_rider_name || '').trim(),
+    default_rider_phone: String(row.default_rider_phone || '').trim(),
+    default_rider_photo_url: String(row.default_rider_photo_url || '').trim(),
     updated_at: row.updated_at,
   };
 }

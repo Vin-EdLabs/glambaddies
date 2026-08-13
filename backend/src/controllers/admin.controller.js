@@ -7,7 +7,8 @@ const { ApiError } = require('../middleware/error');
 const { UPLOAD_DIR } = require('../middleware/upload');
 const { slugify, parsePagination, toCents } = require('../utils/helpers');
 
-const ORDER_STATUSES = ['pending', 'paid', 'shipped', 'delivered', 'cancelled'];
+const ORDER_STATUSES = ['pending', 'paid', 'shipped', 'out_for_delivery', 'delivered', 'cancelled'];
+const { ensureCatalogueExtras } = require('../services/catalogueExtras');
 
 async function ensureUserPhoneColumn() {
   await db.query(`
@@ -204,6 +205,51 @@ exports.updateSettings = async (req, res, next) => {
       updates.push(`announcement_text = $${values.length}`);
     }
 
+    if (
+      body.default_rider_name !== undefined
+      || body.default_rider_phone !== undefined
+      || body.default_rider_photo_url !== undefined
+    ) {
+      const riderName = String(
+        body.default_rider_name !== undefined ? body.default_rider_name : current.default_rider_name || '',
+      ).trim().slice(0, 120);
+      const riderPhone = String(
+        body.default_rider_phone !== undefined ? body.default_rider_phone : current.default_rider_phone || '',
+      ).trim().slice(0, 40);
+      let riderPhoto = String(
+        body.default_rider_photo_url !== undefined
+          ? body.default_rider_photo_url
+          : current.default_rider_photo_url || '',
+      ).trim().slice(0, 500);
+
+      if (riderName && riderName.length < 2) {
+        throw new ApiError(400, 'Rider name is required');
+      }
+      if (riderName && riderPhone.replace(/\D/g, '').length < 9) {
+        throw new ApiError(400, 'Enter a valid rider phone number');
+      }
+
+      values.push(riderName);
+      updates.push(`default_rider_name = $${values.length}`);
+      values.push(riderPhone);
+      updates.push(`default_rider_phone = $${values.length}`);
+      values.push(riderPhoto);
+      updates.push(`default_rider_photo_url = $${values.length}`);
+
+      // Apply this default rider to every order so track-order always shows them.
+      if (riderName && riderPhone) {
+        await db.query(
+          `UPDATE orders
+           SET rider_name = $1,
+               rider_phone = $2,
+               rider_photo_url = NULLIF($3, ''),
+               rider_assigned_at = COALESCE(rider_assigned_at, NOW()),
+               updated_at = NOW()`,
+          [riderName, riderPhone, riderPhoto]
+        );
+      }
+    }
+
     if (body.homepage_features !== undefined) {
       const {
         ensureCategoryHomeColumns,
@@ -380,6 +426,13 @@ exports.updateSettings = async (req, res, next) => {
       message = 'Homepage category tiles updated';
     } else if (body.announcement_text !== undefined && !touchedPayments) {
       message = 'Announcement bar updated';
+    } else if (
+      (body.default_rider_name !== undefined
+        || body.default_rider_phone !== undefined
+        || body.default_rider_photo_url !== undefined)
+      && !touchedPayments
+    ) {
+      message = 'Default rider saved — applied to all orders on Track order';
     } else if (typeof body.purchases_enabled === 'boolean' && !touchedPayments && !rateWasUpdated) {
       message = payload.purchases_enabled
         ? 'Purchases are now enabled'
@@ -460,6 +513,40 @@ exports.uploadHomepageFeatureImage = async (req, res, next) => {
       category: mapCategoryHome(rows[0]),
       message: 'Homepage tile image updated',
       uploaded_url: imageUrl,
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
+// POST /api/glam-baddies/settings/default-rider-photo
+exports.uploadDefaultRiderPhoto = async (req, res, next) => {
+  try {
+    const { ensureSettings, getSettingsRow, publicSettingsPayloadAsync } = require('./store.controller');
+    await ensureSettings();
+    if (!req.file) throw new ApiError(400, 'Choose a rider photo');
+    const imageUrl = `/uploads/${req.file.filename}`;
+    const { rows } = await db.query(
+      `UPDATE store_settings
+       SET default_rider_photo_url = $1, updated_at = NOW()
+       WHERE id = 1
+       RETURNING *`,
+      [imageUrl]
+    );
+    const settings = rows[0] || (await getSettingsRow());
+    if (settings?.default_rider_name && settings?.default_rider_phone) {
+      await db.query(
+        `UPDATE orders
+         SET rider_photo_url = $1,
+             updated_at = NOW()
+         WHERE rider_name = $2`,
+        [imageUrl, settings.default_rider_name]
+      );
+    }
+    res.json({
+      ...(await publicSettingsPayloadAsync(settings)),
+      uploaded_url: imageUrl,
+      message: 'Rider photo updated',
     });
   } catch (err) {
     next(err);
@@ -622,6 +709,7 @@ async function insertImages(productId, files, { primaryIndex = null } = {}) {
 // GET /api/glam-baddies/products (active by default; ?include_inactive=1 for drafts)
 exports.listProducts = async (req, res, next) => {
   try {
+    await ensureCatalogueExtras();
     const { page, limit, offset } = parsePagination(req.query, {
       defaultLimit: 20,
     });
@@ -632,7 +720,13 @@ exports.listProducts = async (req, res, next) => {
       `SELECT COUNT(*)::int AS total FROM products p ${where}`
     );
     const { rows } = await db.query(
-      `SELECT p.*, ROUND(p.price_cents / 100.0, 2) AS price, c.name AS category_name,
+      `SELECT p.*, ROUND(p.price_cents / 100.0, 2) AS price,
+              CASE
+                WHEN p.compare_at_price_cents IS NOT NULL
+                THEN ROUND(p.compare_at_price_cents / 100.0, 2)
+                ELSE NULL
+              END AS compare_at_price,
+              c.name AS category_name, c.slug AS category_slug,
               COALESCE((SELECT json_agg(json_build_object('id', pi.id, 'url', pi.url, 'is_primary', pi.is_primary) ORDER BY pi.is_primary DESC, pi.id)
                         FROM product_images pi WHERE pi.product_id = p.id), '[]'::json) AS images
        FROM products p LEFT JOIN categories c ON c.id = p.category_id
@@ -843,6 +937,119 @@ exports.deleteProductsBulk = async (req, res, next) => {
   }
 };
 
+// PATCH /api/glam-baddies/products/:id/sale
+// Body: { compare_at_price_cents | compare_at_price, discount_percent, sale_ends_at }
+exports.setProductSale = async (req, res, next) => {
+  try {
+    await ensureCatalogueExtras();
+    const id = Number(req.params.id);
+    if (!Number.isInteger(id) || id < 1) throw new ApiError(400, 'Invalid product id');
+
+    const { rows: existing } = await db.query(
+      'SELECT id, price_cents FROM products WHERE id = $1',
+      [id]
+    );
+    if (!existing.length) throw new ApiError(404, 'Product not found');
+
+    const body = req.body || {};
+    let compareAt = toCents(body.compare_at_price);
+    if (compareAt == null && body.compare_at_price_cents != null) {
+      compareAt = Number(body.compare_at_price_cents);
+    }
+    let salePriceCents = toCents(body.sale_price ?? body.new_price ?? body.price);
+    if (salePriceCents == null && body.sale_price_cents != null) {
+      salePriceCents = Number(body.sale_price_cents);
+    }
+    let discount = body.discount_percent != null && body.discount_percent !== ''
+      ? Number(body.discount_percent)
+      : null;
+    const saleEndsRaw = body.sale_ends_at;
+    const saleEndsAt = saleEndsRaw ? new Date(saleEndsRaw) : null;
+    if (saleEndsRaw && Number.isNaN(saleEndsAt?.getTime())) {
+      throw new ApiError(400, 'Invalid sale_ends_at');
+    }
+
+    let priceCents = existing[0].price_cents;
+    if (compareAt == null || !Number.isFinite(compareAt) || compareAt < 1) {
+      throw new ApiError(400, 'Original (compare-at) price is required');
+    }
+    if (salePriceCents != null && Number.isFinite(salePriceCents) && salePriceCents >= 1) {
+      priceCents = Math.round(salePriceCents);
+      discount = Math.max(1, Math.min(95, Math.round(((compareAt - priceCents) / compareAt) * 100)));
+    } else {
+      if (discount == null || !Number.isFinite(discount) || discount < 1 || discount > 95) {
+        throw new ApiError(400, 'Discount percent must be between 1 and 95');
+      }
+      discount = Math.round(discount);
+      priceCents = Math.max(1, Math.round(compareAt * (1 - discount / 100)));
+    }
+    if (priceCents >= compareAt) {
+      throw new ApiError(400, 'Sale price must be lower than the original price');
+    }
+
+    const { rows } = await db.query(
+      `UPDATE products
+       SET compare_at_price_cents = $1,
+           discount_percent = $2,
+           sale_ends_at = $3,
+           is_on_sale = TRUE,
+           price_cents = $4,
+           updated_at = NOW()
+       WHERE id = $5
+       RETURNING *,
+         ROUND(price_cents / 100.0, 2) AS price,
+         ROUND(compare_at_price_cents / 100.0, 2) AS compare_at_price`,
+      [compareAt, discount, saleEndsAt, priceCents, id]
+    );
+
+    const { bumpCatalogueRevision } = require('./store.controller');
+    const revision = await bumpCatalogueRevision();
+    res.json({ product: rows[0], revision, message: 'Sale price set' });
+  } catch (err) {
+    next(err);
+  }
+};
+
+// PATCH /api/glam-baddies/products/:id/clear-sale
+exports.clearProductSale = async (req, res, next) => {
+  try {
+    await ensureCatalogueExtras();
+    const id = Number(req.params.id);
+    if (!Number.isInteger(id) || id < 1) throw new ApiError(400, 'Invalid product id');
+
+    const { rows: existing } = await db.query(
+      'SELECT id, price_cents, compare_at_price_cents, is_on_sale FROM products WHERE id = $1',
+      [id]
+    );
+    if (!existing.length) throw new ApiError(404, 'Product not found');
+
+    // Restore compare-at as the regular price when clearing a sale.
+    const restoreCents =
+      existing[0].is_on_sale && existing[0].compare_at_price_cents
+        ? existing[0].compare_at_price_cents
+        : existing[0].price_cents;
+
+    const { rows } = await db.query(
+      `UPDATE products
+       SET price_cents = $1,
+           compare_at_price_cents = NULL,
+           discount_percent = NULL,
+           sale_ends_at = NULL,
+           is_on_sale = FALSE,
+           updated_at = NOW()
+       WHERE id = $2
+       RETURNING *, ROUND(price_cents / 100.0, 2) AS price`,
+      [restoreCents, id]
+    );
+
+    const { bumpCatalogueRevision } = require('./store.controller');
+    const revision = await bumpCatalogueRevision();
+    res.json({ product: rows[0], revision, message: 'Sale cleared' });
+  } catch (err) {
+    next(err);
+  }
+};
+
 // PUT /api/glam-baddies/products/:id/images/:imageId/primary
 exports.setPrimaryImage = async (req, res, next) => {
   try {
@@ -954,6 +1161,9 @@ exports.listCategories = async (req, res, next) => {
            WHEN 'casual-dresses' THEN 1
            WHEN 'party-dresses' THEN 2
            WHEN 'school-dresses' THEN 3
+           WHEN 'bags' THEN 4
+           WHEN 'shoes' THEN 5
+           WHEN 'beauty' THEN 6
            ELSE 9
          END,
          c.name ASC`
@@ -1179,11 +1389,13 @@ exports.getOrder = async (req, res, next) => {
       throw new ApiError(400, 'Invalid order id');
     }
 
+    await ensureCatalogueExtras();
     const { rows } = await db.query(
       `SELECT o.id, o.status, o.currency, o.total_cents,
               ROUND(o.total_cents / 100.0, 2) AS total,
               o.shipping_address, o.payment_reference, o.paystack_transaction_id,
               o.paid_at, o.created_at, o.updated_at,
+              o.rider_name, o.rider_phone, o.rider_photo_url, o.rider_assigned_at,
               COALESCE(u.id, 0) AS user_id,
               COALESCE(
                 NULLIF(o.shipping_address->>'full_name', ''),
@@ -1298,6 +1510,57 @@ exports.updateOrderStatus = async (req, res, next) => {
     }
 
     res.json({ order: rows[0], email_sent: false });
+  } catch (err) {
+    next(err);
+  }
+};
+
+// PATCH /api/glam-baddies/orders/:id/assign-rider
+// Body (JSON or multipart): { rider_name, rider_phone, rider_photo_url? } + optional photo file
+exports.assignRider = async (req, res, next) => {
+  try {
+    await ensureCatalogueExtras();
+    const orderId = Number(req.params.id);
+    if (!Number.isInteger(orderId) || orderId < 1) {
+      throw new ApiError(400, 'Invalid order id');
+    }
+
+    const { rows: existing } = await db.query(
+      'SELECT id, rider_photo_url FROM orders WHERE id = $1',
+      [orderId]
+    );
+    if (!existing.length) throw new ApiError(404, 'Order not found');
+
+    const riderName = String(req.body?.rider_name || '').trim();
+    const riderPhone = String(req.body?.rider_phone || '').trim();
+    let riderPhoto = String(req.body?.rider_photo_url || '').trim().slice(0, 500);
+    if (req.file?.filename) {
+      riderPhoto = `/uploads/${req.file.filename}`;
+    } else if (!riderPhoto) {
+      riderPhoto = existing[0].rider_photo_url || '';
+    }
+
+    if (riderName.length < 2) throw new ApiError(400, 'Rider name is required');
+    if (riderPhone.replace(/\D/g, '').length < 9) {
+      throw new ApiError(400, 'Enter a valid rider phone number');
+    }
+
+    const { rows } = await db.query(
+      `UPDATE orders
+       SET rider_name = $1,
+           rider_phone = $2,
+           rider_photo_url = NULLIF($3, ''),
+           rider_assigned_at = NOW(),
+           updated_at = NOW()
+       WHERE id = $4
+       RETURNING id, status, rider_name, rider_phone, rider_photo_url, rider_assigned_at, updated_at`,
+      [riderName, riderPhone, riderPhoto, orderId]
+    );
+
+    res.json({
+      order: rows[0],
+      message: 'Rider assigned — customers will see name, phone and photo on track order',
+    });
   } catch (err) {
     next(err);
   }

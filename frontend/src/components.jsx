@@ -2,11 +2,14 @@ import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { Link, Navigate, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import toast from 'react-hot-toast'
-import { ArrowRight, BarChart3, Box, Check, ChevronDown, Copy, Eye, EyeOff, Heart, LayoutDashboard, LogOut, Mail, Menu, Minus, Moon, Package, Plus, Search, Settings, ShoppingBag, Sun, Tag, Trash2, User, Users, X } from 'lucide-react'
+import { ArrowRight, BarChart3, Bike, Box, Check, ChevronDown, Copy, Eye, EyeOff, Heart, LayoutDashboard, LogOut, Mail, Menu, Minus, Moon, Package, Plus, Search, Settings, ShoppingBag, Sun, Tag, Trash2, User, Users, X } from 'lucide-react'
 import { useAuth, useCart, useTheme } from './contexts'
 import { formatCurrency } from './utils'
 import api, { asArray, errorMessage } from './services/api'
 import { ADMIN_PATH } from './adminPath'
+import { SearchOverlay } from './components/SearchOverlay'
+import { MobileMenu } from './components/MobileMenu'
+import { CollectionsDropdown } from './components/CollectionsDropdown'
 
 export function CopyValue({ value, label = 'Copy' }) {
   const [copied, setCopied] = useState(false)
@@ -58,16 +61,19 @@ export function ProductCard({ product }) {
   const [imageBroken, setImageBroken] = useState(false)
   // A product without a working photo looks unprofessional — drop the card entirely.
   if (imageBroken || !product.image) return null
-  return <article className="product-card">
+  return <article className={`product-card${product.is_on_sale ? ' is-on-sale' : ''}`}>
     <Link to={`/products/${product.slug || product.id}`} className="product-image">
-      {product.badge && <span className="badge">{product.badge}</span>}
+      {product.badge ? <span className="badge sale-badge">{product.badge}</span> : null}
       <img src={product.image} alt={product.name} loading="lazy" onError={() => setImageBroken(true)} />
       <button className="heart" aria-label="Save product"><Heart size={18} /></button>
     </Link>
     <div className="product-info">
       <p className="eyebrow">{product.brand || product.category}</p>
       <Link to={`/products/${product.slug || product.id}`}>{product.name}</Link>
-      <div><strong>{formatCurrency(product.price)}</strong>{product.oldPrice && <del>{formatCurrency(product.oldPrice)}</del>}</div>
+      <div className="product-price-row">
+        {product.oldPrice ? <del>{formatCurrency(product.oldPrice)}</del> : null}
+        <strong className={product.is_on_sale ? 'sale-price' : undefined}>{formatCurrency(product.price)}</strong>
+      </div>
       <button className="quick-add" onClick={() => addItem(product)}>Quick add <Plus size={14} /></button>
     </div>
   </article>
@@ -230,6 +236,7 @@ export function StoreLayout() {
   const [newsletterBusy, setNewsletterBusy] = useState(false)
   const [announcement, setAnnouncement] = useState('Shop · Slay · Shine')
   const [showSnapchat, setShowSnapchat] = useState(false)
+  const [searchOpen, setSearchOpen] = useState(false)
   const snapchatLastY = useRef(0)
   const snapchatHideTimer = useRef(0)
   const snapchatPaused = useRef(false)
@@ -246,7 +253,13 @@ export function StoreLayout() {
   const [categories, setCategories] = useState([])
   useEffect(() => {
     api.get('/categories')
-      .then(({ data }) => setCategories(asArray(data?.categories)))
+      .then(({ data }) => setCategories(
+        asArray(data?.categories).filter((category) => {
+          const slug = String(category?.slug || '').toLowerCase()
+          const name = String(category?.name || '').toLowerCase()
+          return !slug.includes('vincet') && !name.includes('vincet') && !slug.includes('test') && !name.includes('test')
+        }),
+      ))
       .catch(() => setCategories([]))
   }, [])
   useEffect(() => {
@@ -318,10 +331,6 @@ export function StoreLayout() {
     }
   }
   const orderedCategories = asArray(categories)
-  const navLinks = [
-    { label: 'New arrivals', to: '/shop', isActive: location.pathname === '/shop' && !category },
-    ...orderedCategories.map((item) => ({ label: item.name, to: `/shop?category=${encodeURIComponent(item.slug)}`, isActive: location.pathname === '/shop' && category === item.slug })),
-  ]
   const joinPrivateList = async (event) => {
     event.preventDefault()
     const email = newsletterEmail.trim()
@@ -341,27 +350,33 @@ export function StoreLayout() {
     <div className="store-top">
       <div className="announcement">{announcement}</div>
       <header className="site-header">
-        <button className="mobile-menu" onClick={() => setMenu(!menu)}><Menu /></button>
+        <div className="header-left">
+          <button type="button" className="mobile-menu" onClick={() => setMenu(true)} aria-label="Open menu"><Menu /></button>
+          <button type="button" className="header-search" aria-label="Search" onClick={() => setSearchOpen(true)}><Search /></button>
+        </div>
         <Link className="logo" to="/" aria-label="GlamBaddies home">
           <img src="/logo.png" alt="" />
           <span className="logo-wordmark">GlamBaddies</span>
         </Link>
-        <nav className={menu ? 'open' : ''}>
-          {navLinks.map((link) => (
-            <Link
-              key={link.to}
-              to={link.to}
-              className={link.isActive ? 'active' : undefined}
-              onClick={() => setMenu(false)}
-            >
-              {link.label}
-            </Link>
-          ))}
-          <Link className="mobile-story" to="/about" onClick={() => setMenu(false)}>Our story</Link>
-          <Link className="mobile-story" to="/track-order" onClick={() => setMenu(false)}>Track order</Link>
+        <nav className="site-nav-desktop" aria-label="Primary">
+          <Link
+            to="/shop"
+            className={location.pathname === '/shop' && !category ? 'active' : undefined}
+          >
+            New arrivals
+          </Link>
+          <CollectionsDropdown categories={orderedCategories} />
         </nav>
-        <div className="header-actions"><Link className={`header-story${location.pathname === '/about' ? ' active' : ''}`} to="/about">Our story</Link><Link className={`header-story${location.pathname === '/track-order' ? ' active' : ''}`} to="/track-order">Track order</Link><button type="button" className="theme-toggle header-theme" onClick={toggleTheme} aria-label={isDark ? 'Switch to light mode' : 'Switch to dark mode'}>{isDark ? <Sun size={18} /> : <Moon size={18} />}</button><Link className="header-search" to="/shop" aria-label="Search"><Search /></Link><Link to={customer ? '/account' : '/login'} aria-label="Account"><User /></Link><button onClick={() => setIsOpen(true)} aria-label="Bag"><ShoppingBag /><span>{count}</span></button></div>
+        <div className="header-actions">
+          <Link className={`header-story${location.pathname === '/about' ? ' active' : ''}`} to="/about">Our story</Link>
+          <Link className={`header-story${location.pathname === '/track-order' ? ' active' : ''}`} to="/track-order">Track order</Link>
+          <button type="button" className="theme-toggle header-theme" onClick={toggleTheme} aria-label={isDark ? 'Switch to light mode' : 'Switch to dark mode'}>{isDark ? <Sun size={18} /> : <Moon size={18} />}</button>
+          <Link to={customer ? '/account' : '/login'} aria-label="Account"><User /></Link>
+          <button onClick={() => setIsOpen(true)} aria-label="Bag"><ShoppingBag /><span>{count}</span></button>
+        </div>
       </header>
+      <MobileMenu open={menu} onClose={() => setMenu(false)} categories={orderedCategories} />
+      <SearchOverlay open={searchOpen} onClose={() => setSearchOpen(false)} />
     </div>
     <main key={`${location.pathname}${location.search}`}><Outlet /></main>
     <footer>
@@ -447,6 +462,7 @@ const adminNav = [
   { label: 'Products', to: `${ADMIN_PATH}/products`, icon: Box },
   { label: 'Categories', to: `${ADMIN_PATH}/categories`, icon: Tag },
   { label: 'Orders', to: `${ADMIN_PATH}/orders`, icon: Package },
+  { label: 'Rider', to: `${ADMIN_PATH}/rider`, icon: Bike },
   { label: 'Customers', to: `${ADMIN_PATH}/customers`, icon: Users },
   { label: 'Settings', to: `${ADMIN_PATH}/settings`, icon: Settings },
 ]

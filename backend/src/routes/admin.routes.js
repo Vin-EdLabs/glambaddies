@@ -18,11 +18,18 @@ router.post(
   upload.single('image'),
   controller.uploadHomepageFeatureImage
 );
+router.post(
+  '/settings/default-rider-photo',
+  upload.single('photo'),
+  controller.uploadDefaultRiderPhoto
+);
 
 router.get('/products', controller.listProducts);
 router.post('/products', upload.array('images', 12), controller.createProduct);
 router.post('/products/bulk-delete', controller.deleteProductsBulk);
 router.put('/products/:id', upload.array('images', 12), controller.updateProduct);
+router.patch('/products/:id/sale', controller.setProductSale);
+router.patch('/products/:id/clear-sale', controller.clearProductSale);
 router.delete('/products/:id', controller.deleteProduct);
 router.put('/products/:id/images/:imageId/primary', controller.setPrimaryImage);
 router.delete('/products/:id/images/:imageId', controller.deleteProductImage);
@@ -42,6 +49,7 @@ router.delete('/orders', controller.clearOrders);
 router.post('/orders/clear', controller.clearOrders);
 router.get('/orders/:id', controller.getOrder);
 router.put('/orders/:id/status', controller.updateOrderStatus);
+router.patch('/orders/:id/assign-rider', upload.single('photo'), controller.assignRider);
 router.delete('/orders/:id', controller.deleteOrder);
 router.post('/orders/:id/delete', controller.deleteOrder);
 

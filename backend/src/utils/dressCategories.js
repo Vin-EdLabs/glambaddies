@@ -1,6 +1,6 @@
 /**
- * GlamBaddies catalogue rules: girls' dresses (and dress-named categories) only.
- * Used by sitemap and any dress-scoped queries.
+ * GlamBaddies catalogue rules for SEO / sitemap.
+ * Dresses + accessory categories (bags, shoes, beauty).
  */
 
 const DRESS_CATEGORY_SLUGS = [
@@ -10,21 +10,22 @@ const DRESS_CATEGORY_SLUGS = [
   'school-dresses',
   'occasion-dresses',
   'dresses',
+  'bags',
+  'shoes',
+  'beauty',
 ];
 
-/** Leftover seed / previous-store categories that must never appear in SEO or cleanup keepers. */
+/** Leftover previous-store categories that must never appear in SEO. */
 const NON_DRESS_CATEGORY_SLUGS = [
   'food',
   'fruits',
   'fruit',
   'electronics',
-  'beauty',
   'home',
   'home-living',
   'games',
   'sneakers',
   'jackets',
-  'bags',
   'trousers',
   'fashion',
   'sports',
@@ -32,8 +33,6 @@ const NON_DRESS_CATEGORY_SLUGS = [
 
 /**
  * SQL boolean predicate for a categories row alias `c`.
- * Keeps known dress slugs and any category whose slug/name contains "dress".
- * Always rejects known non-dress leftover categories.
  */
 function dressCategorySql(alias = 'c') {
   const a = alias;

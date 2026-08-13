@@ -89,6 +89,16 @@ app.get('/api/health', (req, res) => {
   });
 });
 
+// Ensure sale/rider columns + accessory categories (non-blocking)
+try {
+  const { ensureCatalogueExtras } = require('./src/services/catalogueExtras');
+  ensureCatalogueExtras().catch((err) => {
+    console.warn('[catalogueExtras]', err.message);
+  });
+} catch (err) {
+  console.warn('[catalogueExtras]', err.message);
+}
+
 app.use('/api/auth', require('./src/routes/auth.routes'));
 app.use('/api/products', require('./src/routes/products.routes'));
 app.use('/api/categories', require('./src/routes/categories.routes'));

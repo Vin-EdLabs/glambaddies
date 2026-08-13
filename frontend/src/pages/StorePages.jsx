@@ -8,7 +8,7 @@ import SEO from '../components/SEO'
 import { ProductImageGallery } from '../ProductImageGallery'
 import { useAuth, useCart } from '../contexts'
 import api, { asArray, errorMessage, getProductCacheRev, mapProduct, mapProducts, resolveImageUrl, syncCatalogueRevision } from '../services/api'
-import { formatCurrency } from '../utils'
+import { formatCurrency, groupCategories } from '../utils'
 import { DRESS_COLORS, DRESS_SIZES } from '../dressOptions'
 
 const SITE_URL = String(import.meta.env.VITE_APP_URL || 'https://www.glambaddies.com').replace(/\/$/, '')
@@ -57,11 +57,56 @@ function useProductCacheRev() {
   return rev
 }
 
-const DEFAULT_HOME_FEATURES = [
-  { category_slug: 'casual-dresses', eyebrow: 'Casual', title: 'Everyday dresses', image_url: '/edit-casual.jpg' },
-  { category_slug: 'party-dresses', eyebrow: 'Party', title: 'Celebration looks', image_url: '/edit-party.jpg' },
-  { category_slug: 'school-dresses', eyebrow: 'School', title: 'Smart day dresses', image_url: '/edit-school.jpg' },
+const HOME_CATEGORY_SHOWCASE = [
+  {
+    slug: 'casual-dresses',
+    group: 'Dresses',
+    eyebrow: 'Casual',
+    title: 'Everyday dresses',
+    image: 'https://images.unsplash.com/photo-1515886657613-9f3515b0c78f?w=600&q=80',
+  },
+  {
+    slug: 'party-dresses',
+    group: 'Dresses',
+    eyebrow: 'Party',
+    title: 'Celebration looks',
+    image: 'https://images.unsplash.com/photo-1539109136881-3be0616acf4b?w=600&q=80',
+  },
+  {
+    slug: 'school-dresses',
+    group: 'Dresses',
+    eyebrow: 'School',
+    title: 'Smart day dresses',
+    image: 'https://images.unsplash.com/photo-1577900232427-18219b9166a0?w=600&q=80',
+  },
+  {
+    slug: 'bags',
+    group: 'Bags',
+    eyebrow: 'Bags',
+    title: 'Carry the look',
+    image: 'https://images.unsplash.com/photo-1548036328-c9fa89d128fa?w=600&q=80',
+  },
+  {
+    slug: 'shoes',
+    group: 'Shoes',
+    eyebrow: 'Shoes',
+    title: 'Step into glam',
+    image: 'https://images.unsplash.com/photo-1543163521-1bf539c55dd2?w=600&q=80',
+  },
+  {
+    slug: 'beauty',
+    group: 'Beauty',
+    eyebrow: 'Beauty',
+    title: 'Makeup & tiny essentials',
+    image: 'https://images.unsplash.com/photo-1522335789203-aabd1fc54bc9?w=600&q=80',
+  },
 ]
+
+function isTestCategory(category) {
+  const slug = String(category?.slug || '').toLowerCase()
+  const name = String(category?.name || '').toLowerCase()
+  return slug.includes('vincet') || name.includes('vincet') || slug.includes('test') || name.includes('test')
+}
 
 function categorySectionCopy(category) {
   const name = String(category?.name || 'Dresses').trim()
@@ -75,7 +120,7 @@ export function Home() {
   const productsRev = useProductCacheRev()
   const { data, loading, error, retry } = useApi(
     () => api.get('/categories').then(async ({ data: categoriesPayload }) => {
-      const allCategories = asArray(categoriesPayload?.categories)
+      const allCategories = asArray(categoriesPayload?.categories).filter((category) => !isTestCategory(category))
       const productResults = await Promise.all(
         allCategories.map((category) =>
           api.get('/products', {
@@ -89,16 +134,19 @@ export function Home() {
         try { localStorage.setItem('glam_products_rev', String(revision)) } catch { /* ignore */ }
       }
 
-      const features = asArray(categoriesPayload?.homepage_features).length
-        ? asArray(categoriesPayload.homepage_features)
-        : allCategories.map((category) => ({
-            id: `category-${category.id}`,
-            category_id: category.id,
-            category_slug: category.slug,
-            eyebrow: category.home_eyebrow,
-            title: category.home_title,
-            image_url: category.home_image_url,
-          }))
+      const bySlug = Object.fromEntries(allCategories.map((category) => [category.slug, category]))
+      const features = HOME_CATEGORY_SHOWCASE.map((item) => {
+        const live = bySlug[item.slug]
+        return {
+          id: live ? `category-${live.id}` : `showcase-${item.slug}`,
+          category_id: live?.id,
+          category_slug: item.slug,
+          group: item.group,
+          eyebrow: live?.home_eyebrow || item.eyebrow,
+          title: live?.home_title || item.title,
+          image_url: item.image,
+        }
+      })
 
       const sections = allCategories
         .map((category, index) => {
@@ -117,7 +165,7 @@ export function Home() {
         .filter((section) => section.products.length > 0)
 
       return {
-        features: features.length ? features : DEFAULT_HOME_FEATURES,
+        features,
         sections,
         categoryNames: allCategories.map((category) => category.name).filter(Boolean),
       }
@@ -127,30 +175,24 @@ export function Home() {
 
   const categories = asArray(data?.sections)
 
-  const featureTiles = (data?.features || DEFAULT_HOME_FEATURES).map((feature, index) => {
-    const fallback = DEFAULT_HOME_FEATURES[index] || DEFAULT_HOME_FEATURES[0]
-    const slug = feature.category_slug || fallback.category_slug
+  const featureTiles = asArray(data?.features).map((feature, index) => {
+    const fallback = HOME_CATEGORY_SHOWCASE[index] || HOME_CATEGORY_SHOWCASE[0]
+    const slug = feature.category_slug || fallback.slug
     const eyebrow = feature.eyebrow || fallback.eyebrow
     const title = feature.title || fallback.title
-    const image = resolveImageUrl(feature.image_url || fallback.image_url) || feature.image_url || fallback.image_url
+    const group = feature.group || fallback.group || 'Shop'
+    const image = feature.image_url || fallback.image
     return {
       key: `tile-${feature.category_id || index}-${slug}`,
       to: `/shop?category=${encodeURIComponent(slug)}`,
       image,
+      group,
       eyebrow,
       title,
-      alt: `${eyebrow} girls dresses`,
+      alt: `${title} — GlamBaddies`,
+      index,
     }
   })
-
-  const tileCount = featureTiles.length
-  const editorialClass = tileCount === 1
-    ? 'editorial-grid editorial-grid--one'
-    : tileCount === 2
-      ? 'editorial-grid editorial-grid--two'
-      : tileCount === 3
-        ? 'editorial-grid editorial-grid--three'
-        : 'editorial-grid editorial-grid--many'
 
   const collectionLine = asArray(data?.categoryNames).length
     ? `${asArray(data.categoryNames).join(', ')} — every GlamBaddies dress in one place.`
@@ -175,6 +217,31 @@ export function Home() {
           </div>
         </div>
       </section>
+
+      {featureTiles.length ? (
+        <section className="home-category-editorial" aria-label="Shop by category">
+          <p className="home-category-editorial-title">Shop by category</p>
+          <div className="home-category-grid">
+            {featureTiles.map((edit) => (
+              <Link
+                className="home-category-card"
+                to={edit.to}
+                key={edit.key}
+                style={{ '--stagger': `${edit.index * 80}ms` }}
+              >
+                <div className="home-category-card-media">
+                  <img src={edit.image} alt={edit.alt} loading="lazy" />
+                </div>
+                <div className="home-category-card-copy">
+                  <span>{edit.group}</span>
+                  <h2>{edit.title}</h2>
+                </div>
+                <span className="home-category-card-arrow" aria-hidden="true">→</span>
+              </Link>
+            ))}
+          </div>
+        </section>
+      ) : null}
 
       {loading ? (
         <section className="section home-category">
@@ -226,21 +293,6 @@ export function Home() {
         </div>
       </section>
 
-      {featureTiles.length ? (
-        <section className={editorialClass} aria-label="Shop by category">
-          {featureTiles.map((edit) => (
-            <Link to={edit.to} key={edit.key}>
-              <img src={edit.image} alt={edit.alt} />
-              <div>
-                <span className="eyebrow">{edit.eyebrow}</span>
-                <h2>{edit.title}</h2>
-                <span className="browse-all browse-all--on-dark">Shop all <ArrowRight size={14} /></span>
-              </div>
-            </Link>
-          ))}
-        </section>
-      ) : null}
-
       <section className="manifesto">
         <span className="eyebrow">Shop · Slay · Shine</span>
         <h2>Little dresses.<br />Big energy.</h2>
@@ -263,7 +315,7 @@ export function Shop() {
   const [mobileFilters, setMobileFilters] = useState(false)
   const productsRev = useProductCacheRev()
   const category = params.get('category') || ''
-  const query = params.get('q') || ''
+  const query = params.get('q') || params.get('search') || ''
   const requestKey = `${category}|${query}|${sort}|${productsRev}`
   const { data, loading, error, retry } = useApi(
     () => Promise.all([
@@ -283,6 +335,8 @@ export function Shop() {
   )
   const products = asArray(data?.products)
   const categories = asArray(data?.categories)
+  const { dresses, accessories, other } = groupCategories(categories)
+  const pillCategories = [...dresses, ...accessories, ...other]
   const title = categories.find((item) => item.slug === category)?.name || (query ? `Results for “${query}”` : 'Shop all')
   return <div className="shop-page">
     <SEO
@@ -291,6 +345,18 @@ export function Shop() {
       url={`${SITE_URL}/shop`}
     />
     <div className="page-title"><span className="eyebrow">The collection</span><h1>{title}</h1><p>Shop the latest girls&apos; dresses — curated for every occasion.</p></div>
+    <div className="shop-category-pills" aria-label="Categories">
+      <Link className={`shop-pill${!category ? ' is-active' : ''}`} to="/shop">All</Link>
+      {pillCategories.map((item) => (
+        <Link
+          key={item.slug}
+          className={`shop-pill${category === item.slug ? ' is-active' : ''}`}
+          to={`/shop?category=${encodeURIComponent(item.slug)}`}
+        >
+          {item.name}
+        </Link>
+      ))}
+    </div>
     <div className="catalog-toolbar"><button onClick={() => setMobileFilters(true)}><Filter /> Filters</button><span>{data?.pagination?.total || 0} pieces</span><label>Sort by <select value={sort} onChange={(event) => setSort(event.target.value)}><option value="newest">Featured</option><option value="price_asc">Price: low to high</option><option value="price_desc">Price: high to low</option><option value="name_asc">Name</option></select><ChevronDown /></label></div>
     <div className="catalog"><aside className={mobileFilters ? 'open' : ''}><button className="filter-close" onClick={() => setMobileFilters(false)}><X /></button><FilterGroup title="Category" values={categories} active={category} /></aside>
       {loading ? <LoadingGrid /> : error ? <ErrorState retry={retry} /> : products.length ? <div className="product-grid">{products.map((product) => <ProductCard product={product} key={product.id} />)}</div> : <EmptyState title="No pieces found" text="Try changing your filters or search phrase." action="View all products" to="/shop" />}</div>
@@ -347,7 +413,13 @@ export function ProductDetail() {
       <div className="product-summary">
         <span className="eyebrow">{product.brand || product.category}</span>
         <h1>{product.name}</h1>
-        <div className="detail-price">{formatCurrency(product.price)}</div>
+        <div className={`detail-price${product.is_on_sale ? ' is-on-sale' : ''}`}>
+          {product.oldPrice ? <del>{formatCurrency(product.oldPrice)}</del> : null}
+          <strong className={product.is_on_sale ? 'sale-price' : undefined}>{formatCurrency(product.price)}</strong>
+        </div>
+        {product.is_on_sale && product.savings > 0 ? (
+          <p className="sale-save">You save {formatCurrency(product.savings)}</p>
+        ) : null}
         <p>{product.description}</p>
         <div className="option-block">
           <div className="size-head"><strong>Colour</strong><span>{color || 'Select'}</span></div>
@@ -795,7 +867,48 @@ export function PaymentVerify() {
   )
 }
 
-const statusStep = { pending: 1, paid: 2, shipped: 3, delivered: 4, cancelled: 0 }
+const statusStep = { pending: 1, paid: 2, shipped: 3, out_for_delivery: 3, delivered: 4, cancelled: 0 }
+
+function RiderCard({ rider }) {
+  if (!rider?.name) return null
+  const initials = String(rider.name)
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((part) => part[0])
+    .join('')
+    .slice(0, 2)
+    .toUpperCase() || 'R'
+  const photo = resolveImageUrl(rider.photo_url || rider.photo)
+  const phone = rider.phone || rider.rider_phone || ''
+  const tel = String(phone).replace(/[^\d+]/g, '')
+  const waDigits = String(phone).replace(/\D/g, '')
+  const wa = waDigits.length >= 9
+    ? `https://wa.me/${waDigits.startsWith('0') ? `233${waDigits.slice(1)}` : waDigits}`
+    : ''
+  return (
+    <section className="rider-card" aria-label="Delivery rider">
+      {photo ? (
+        <img className="rider-photo" src={photo} alt={rider.name} />
+      ) : (
+        <span className="rider-avatar" aria-hidden="true">{initials}</span>
+      )}
+      <div className="rider-copy">
+        <small>Your rider</small>
+        <strong>{rider.name}</strong>
+        {phone ? <span className="rider-phone">{phone}</span> : null}
+      </div>
+      <div className="rider-actions">
+        {tel ? (
+          <a className="rider-call" href={`tel:${tel}`}>Call rider</a>
+        ) : null}
+        {wa ? (
+          <a className="rider-whatsapp" href={wa} target="_blank" rel="noreferrer">WhatsApp</a>
+        ) : null}
+      </div>
+    </section>
+  )
+}
+
 export function TrackOrder() {
   const [params] = useSearchParams()
   const [query, setQuery] = useState(() => params.get('phone') || '')
@@ -814,7 +927,12 @@ export function TrackOrder() {
     setLookupError('')
     try {
       const { data } = await api.get('/orders/track', { params: { phone: value } })
-      setOrders(asArray(data?.orders).length ? asArray(data.orders) : (data?.order ? [data.order] : []))
+      const fallbackRider = data?.default_rider || null
+      const list = asArray(data?.orders).length ? asArray(data.orders) : (data?.order ? [data.order] : [])
+      setOrders(list.map((order) => ({
+        ...order,
+        rider: order.rider || fallbackRider,
+      })))
     } catch (error) {
       setOrders([])
       setLookupError(errorMessage(error, 'No orders found for that phone number.'))
@@ -886,6 +1004,11 @@ export function TrackOrder() {
               <b>Shipped</b>
               <b>Delivered</b>
             </div>
+            {order.fulfillment_method === 'pickup' ? null : order.rider ? (
+              <RiderCard rider={order.rider} />
+            ) : (
+              <p className="track-rider-empty">Rider details will show here once assigned.</p>
+            )}
             <div className="track-meta">
               <p>
                 <small>Fulfillment</small>

@@ -627,3 +627,150 @@ html[data-theme="dark"] .table-product small {
 html[data-theme="dark"] .low-stock {
   color: #ffb4c0;
 }
+
+html[data-theme="dark"] .sale-badge,
+html[data-theme="dark"] .badge.sale-badge {
+  background: #e91e8c;
+  color: #fff;
+}
+
+html[data-theme="dark"] .home-category-editorial {
+  background: #0d0d0d;
+}
+
+html[data-theme="dark"] .home-category-editorial-title {
+  color: #888;
+}
+
+html[data-theme="dark"] .home-category-card::after {
+  background: linear-gradient(to top, rgba(0, 0, 0, 0.78) 0%, rgba(0, 0, 0, 0.35) 45%, transparent 70%);
+}
+
+html[data-theme="dark"] .search-overlay {
+  background: rgba(0, 0, 0, 0.45);
+}
+
+html[data-theme="dark"] .search-overlay-panel {
+  background: #151515;
+  border-color: #2e2e2e;
+  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.45);
+}
+
+html[data-theme="dark"] .search-overlay-top {
+  border-bottom-color: #333;
+}
+
+html[data-theme="dark"] .search-overlay-top input,
+html[data-theme="dark"] .search-overlay-close,
+html[data-theme="dark"] .search-overlay-product-copy b,
+html[data-theme="dark"] .search-overlay-category,
+html[data-theme="dark"] .search-overlay-all {
+  color: #ffffff;
+}
+
+html[data-theme="dark"] .search-overlay-product,
+html[data-theme="dark"] .search-overlay-category {
+  border-bottom-color: #222;
+}
+
+html[data-theme="dark"] .nav-collections-panel,
+html[data-theme="dark"] .mobile-collections-panel,
+html[data-theme="dark"] .rider-card,
+html[data-theme="dark"] .shop-pill {
+  background: #0d0d0d;
+  border-color: #2e2e2e;
+  color: #f5f5f5;
+}
+
+html[data-theme="dark"] .mobile-collections-feature span {
+  color: #f5f5f5;
+}
+
+html[data-theme="dark"] .nav-group a {
+  color: #f5f5f5;
+}
+
+html[data-theme="dark"] .nav-group a:hover,
+html[data-theme="dark"] .nav-group a.active,
+html[data-theme="dark"] .nav-collections-feature span,
+html[data-theme="dark"] .nav-collections-trigger.is-open,
+html[data-theme="dark"] .nav-collections-trigger:hover {
+  color: #e91e8c;
+}
+
+html[data-theme="dark"] .mobile-nav-overlay {
+  background: rgba(0, 0, 0, 0.55);
+}
+
+html[data-theme="dark"] .mobile-nav-panel,
+html[data-theme="dark"] .mobile-nav-header {
+  background: #0d0d0d;
+}
+
+html[data-theme="dark"] .mobile-collections-toggle {
+  color: #ffffff;
+  border-bottom-color: #222;
+}
+
+html[data-theme="dark"] .mobile-collections-toggle.is-open,
+html[data-theme="dark"] .mobile-collections-toggle.is-active {
+  color: #e91e8c;
+}
+
+html[data-theme="dark"] .mobile-nav-header {
+  border-bottom-color: #222;
+}
+
+html[data-theme="dark"] .mobile-nav-close,
+html[data-theme="dark"] .mobile-nav-link,
+html[data-theme="dark"] .mobile-nav-item,
+html[data-theme="dark"] .mobile-nav-social a {
+  color: #ffffff;
+}
+
+html[data-theme="dark"] .mobile-nav-link,
+html[data-theme="dark"] .mobile-nav-item {
+  border-bottom-color: #222;
+}
+
+html[data-theme="dark"] .mobile-nav-group-label,
+html[data-theme="dark"] .mobile-nav-divider,
+html[data-theme="dark"] .mobile-nav-footer {
+  background: #111;
+}
+
+html[data-theme="dark"] .mobile-nav-group-label,
+html[data-theme="dark"] .mobile-nav-footer p {
+  color: #999;
+}
+
+html[data-theme="dark"] .mobile-nav-link.is-active,
+html[data-theme="dark"] .mobile-nav-item.is-active {
+  color: #e91e8c;
+}
+
+html[data-theme="dark"] .mobile-nav-item:active,
+html[data-theme="dark"] .mobile-nav-link:active {
+  background: rgba(233, 30, 140, 0.12);
+}
+
+html[data-theme="dark"] .rider-phone {
+  color: #f5f5f5 !important;
+}
+
+html[data-theme="dark"] .shop-pill.is-active {
+  background: #f5f5f5;
+  color: #0d0d0d;
+}
+
+html[data-theme="dark"] .rider-avatar {
+  background: #e91e8c;
+}
+
+html[data-theme="dark"] .sale-ends,
+html[data-theme="dark"] .nav-group-label,
+html[data-theme="dark"] .search-overlay-label,
+html[data-theme="dark"] .rider-copy small,
+html[data-theme="dark"] .rider-copy span {
+  color: #a3a3a3;
+}

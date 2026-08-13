@@ -152,6 +152,9 @@ async function listHomepageFeatures() {
          WHEN 'casual-dresses' THEN 1
          WHEN 'party-dresses' THEN 2
          WHEN 'school-dresses' THEN 3
+         WHEN 'bags' THEN 4
+         WHEN 'shoes' THEN 5
+         WHEN 'beauty' THEN 6
          ELSE 9
        END,
        c.name ASC`

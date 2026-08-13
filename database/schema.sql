@@ -52,6 +52,10 @@ CREATE TABLE products (
     description  TEXT         NOT NULL DEFAULT '',
     -- All monetary amounts are stored as integer GHS pesewas (1 GHS = 100).
     price_cents  INTEGER      NOT NULL CHECK (price_cents >= 0),
+    compare_at_price_cents INTEGER CHECK (compare_at_price_cents IS NULL OR compare_at_price_cents >= 0),
+    discount_percent INTEGER CHECK (discount_percent IS NULL OR (discount_percent >= 0 AND discount_percent <= 95)),
+    sale_ends_at TIMESTAMPTZ,
+    is_on_sale   BOOLEAN      NOT NULL DEFAULT FALSE,
     stock        INTEGER      NOT NULL DEFAULT 0 CHECK (stock >= 0),
     is_active    BOOLEAN      NOT NULL DEFAULT TRUE,
     created_at   TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
@@ -89,13 +93,17 @@ CREATE TABLE orders (
     -- Nullable so guests can checkout without creating an account.
     user_id                INTEGER      REFERENCES users(id) ON DELETE RESTRICT,
     status                 VARCHAR(20)  NOT NULL DEFAULT 'pending'
-                           CHECK (status IN ('pending', 'paid', 'shipped', 'delivered', 'cancelled')),
+                           CHECK (status IN ('pending', 'paid', 'shipped', 'out_for_delivery', 'delivered', 'cancelled')),
     currency               CHAR(3)      NOT NULL DEFAULT 'GHS',
     total_cents            INTEGER      NOT NULL CHECK (total_cents >= 0),
     shipping_address       JSONB        NOT NULL DEFAULT '{}'::jsonb,
     payment_reference      VARCHAR(100) UNIQUE,
     paystack_transaction_id BIGINT,
     paid_at                TIMESTAMPTZ,
+    rider_name             VARCHAR(120),
+    rider_phone            VARCHAR(40),
+    rider_photo_url        VARCHAR(500),
+    rider_assigned_at      TIMESTAMPTZ,
     created_at             TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
     updated_at             TIMESTAMPTZ  NOT NULL DEFAULT NOW()
 );

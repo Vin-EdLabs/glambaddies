@@ -90,13 +90,37 @@ export const mapProduct = (product) => {
   })
   const images = rawImages.map((image) => resolveImageUrl(typeof image === 'string' ? image : image?.url)).filter(Boolean)
   const primaryIndex = rawImages.findIndex((image) => image?.is_primary)
+  const price = Number(product.price ?? Number(product.price_cents || 0) / 100)
+  const compareAt = Number(
+    product.compare_at_price
+      ?? (product.compare_at_price_cents != null ? Number(product.compare_at_price_cents) / 100 : 0),
+  )
+  const isOnSale = Boolean(
+    product.is_on_sale
+      && compareAt > price
+      && (!product.sale_ends_at || new Date(product.sale_ends_at).getTime() > Date.now()),
+  )
+  const discountPercent = Number(product.discount_percent) || (isOnSale && compareAt > 0
+    ? Math.round(((compareAt - price) / compareAt) * 100)
+    : 0)
+  const savings = isOnSale ? Math.max(0, compareAt - price) : 0
   return {
     ...product,
     id: String(product.id ?? ''),
-    price: Number(product.price ?? Number(product.price_cents || 0) / 100),
+    price,
+    oldPrice: isOnSale ? compareAt : undefined,
+    compare_at_price: isOnSale ? compareAt : undefined,
+    compare_at_price_cents: product.compare_at_price_cents ?? null,
+    discount_percent: discountPercent || null,
+    is_on_sale: isOnSale,
+    sale_ends_at: product.sale_ends_at || null,
+    savings,
+    badge: isOnSale ? (discountPercent ? `-${discountPercent}%` : 'SALE') : product.badge,
     category: product.category_name || product.category || 'Uncategorised',
     categorySlug: product.category_slug,
-    image: images[primaryIndex >= 0 ? primaryIndex : 0] || resolveImageUrl(product.image_url || product.image) || '',
+    image: images[primaryIndex >= 0 ? primaryIndex : 0]
+      || resolveImageUrl(product.primary_image_url || product.image_url || product.image)
+      || '',
     images,
     sizes: asArray(product.sizes),
     is_active: product.is_active !== false && product.is_active !== 'false' && product.is_active !== 0,

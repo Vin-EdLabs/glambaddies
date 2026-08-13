@@ -8,6 +8,7 @@ router.use((req, res, next) => {
 });
 
 router.get('/', controller.list);
+router.get('/search', controller.search);
 router.get('/:idOrSlug', controller.getOne);
 
 module.exports = router;

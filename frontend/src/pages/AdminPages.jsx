@@ -5,8 +5,120 @@ import { ArrowRight, Box, Check, DollarSign, Edit3, Eye, EyeOff, Mail, Plus, Sea
 import { EmptyState, ErrorState, LoadingGrid, CopyValue, ConfirmDialog, CancelReasonDialog, PasswordInput } from '../components'
 import { useAuth } from '../contexts'
 import api, { asArray, bustProductCache, errorMessage, mapProduct, resolveImageUrl } from '../services/api'
-import { formatCurrency, orderStatusLabel } from '../utils'
+import { formatCurrency, groupCategories, orderStatusLabel } from '../utils'
 import { ADMIN_PATH } from '../adminPath'
+
+function SaleModal({ product, open, busy, onClose, onSave, onClear }) {
+  const [mode, setMode] = useState('fixed')
+  const [original, setOriginal] = useState('')
+  const [salePrice, setSalePrice] = useState('')
+  const [percent, setPercent] = useState('20')
+  const [ends, setEnds] = useState('')
+
+  useEffect(() => {
+    if (!open || !product) return
+    const compare = product.compare_at_price || product.oldPrice || product.price || ''
+    const base = compare ? String(Number(compare).toFixed(2)) : ''
+    setOriginal(base)
+    setSalePrice(product.is_on_sale && product.price != null
+      ? String(Number(product.price).toFixed(2))
+      : '')
+    setPercent(String(product.discount_percent || 20))
+    setMode(product.is_on_sale && product.discount_percent ? 'percent' : 'fixed')
+    setEnds(product.sale_ends_at ? String(product.sale_ends_at).slice(0, 16) : '')
+  }, [open, product])
+
+  useEffect(() => {
+    if (mode !== 'percent') return
+    const base = Number(original)
+    const pct = Number(percent)
+    if (!Number.isFinite(base) || base <= 0 || !Number.isFinite(pct) || pct < 1 || pct > 95) return
+    setSalePrice((base * (1 - pct / 100)).toFixed(2))
+  }, [mode, original, percent])
+
+  if (!open || !product) return null
+  const originalNum = Number(original)
+  const saleNum = Number(salePrice)
+  const percentNum = mode === 'percent'
+    ? Number(percent)
+    : (Number.isFinite(originalNum) && originalNum > 0 && Number.isFinite(saleNum)
+      ? Math.round(((originalNum - saleNum) / originalNum) * 100)
+      : null)
+  const valid = Number.isFinite(originalNum) && originalNum > 0
+    && Number.isFinite(saleNum) && saleNum > 0 && saleNum < originalNum
+    && Number.isFinite(percentNum) && percentNum >= 1 && percentNum <= 95
+  const youSave = valid ? originalNum - saleNum : null
+
+  return (
+    <div className="confirm-overlay" role="presentation" onClick={() => { if (!busy) onClose() }}>
+      <div className="confirm-dialog sale-modal" role="dialog" aria-modal="true" onClick={(event) => event.stopPropagation()}>
+        <h2>Set discount</h2>
+        <p>{product.name}</p>
+        <div className="stack-form" style={{ textAlign: 'left', marginTop: '1rem' }}>
+          <div className="discount-mode-toggle" role="group" aria-label="Discount type">
+            <button type="button" className={mode === 'fixed' ? 'is-active' : ''} onClick={() => setMode('fixed')}>Fixed price</button>
+            <button type="button" className={mode === 'percent' ? 'is-active' : ''} onClick={() => setMode('percent')}>Percentage</button>
+          </div>
+          <label>
+            Current / old price (GHS)
+            <input type="number" min="1" step="0.01" value={original} onChange={(event) => setOriginal(event.target.value)} />
+          </label>
+          {mode === 'percent' ? (
+            <label>
+              Discount %
+              <input type="number" min="1" max="95" step="1" value={percent} onChange={(event) => setPercent(event.target.value)} />
+            </label>
+          ) : null}
+          <label>
+            New price (GHS)
+            <input
+              type="number"
+              min="0.01"
+              step="0.01"
+              value={salePrice}
+              readOnly={mode === 'percent'}
+              onChange={(event) => setSalePrice(event.target.value)}
+            />
+          </label>
+          <label>
+            Sale ends (optional)
+            <input type="datetime-local" value={ends} onChange={(event) => setEnds(event.target.value)} />
+          </label>
+          <p className="sale-modal-preview">
+            {valid ? (
+              <>
+                Customers see <del>{formatCurrency(originalNum)}</del>{' '}
+                <strong className="sale-price">{formatCurrency(saleNum)}</strong>
+                {' '}(−{Math.round(percentNum)}%) · You save {formatCurrency(youSave)}
+              </>
+            ) : mode === 'percent'
+              ? 'Enter current price and a percent (1–95)'
+              : 'Enter old and new price'}
+          </p>
+        </div>
+        <div className="confirm-actions">
+          <button type="button" className="admin-button" disabled={busy} onClick={onClose}>Cancel</button>
+          {product.is_on_sale ? (
+            <button type="button" className="admin-button danger" disabled={busy} onClick={onClear}>Clear sale</button>
+          ) : null}
+          <button
+            type="button"
+            className="admin-button primary"
+            disabled={busy || !valid}
+            onClick={() => onSave({
+              compare_at_price: originalNum,
+              sale_price: saleNum,
+              discount_percent: Math.round(percentNum),
+              sale_ends_at: ends || null,
+            })}
+          >
+            {busy ? 'Saving…' : 'Save discount'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
 
 function useAdminData(load, dependencies) {
   const [state, setState] = useState({ data: null, loading: true, error: null })
@@ -137,6 +249,7 @@ export function AdminProducts() {
   const [query, setQuery] = useState('')
   const [selected, setSelected] = useState(() => new Set())
   const [confirm, setConfirm] = useState(null)
+  const [saleProduct, setSaleProduct] = useState(null)
   const [busy, setBusy] = useState(false)
   const { data, loading, error, retry, setData } = useAdminData(
     () => api.get('/glam-baddies/products', { params: { page, limit: 20, include_inactive: 1 } }).then(({ data: payload }) => ({
@@ -176,6 +289,44 @@ export function AdminProducts() {
   }
 
   const openProduct = (id) => navigate(`${ADMIN_PATH}/products/${id}/edit`)
+  const saveSale = async (payload) => {
+    if (!saleProduct?.id) return
+    setBusy(true)
+    try {
+      const { data: result } = await api.patch(`/glam-baddies/products/${saleProduct.id}/sale`, payload)
+      const mapped = mapProduct(result.product)
+      setData({
+        ...data,
+        products: asArray(data?.products).map((item) => (String(item.id) === String(mapped.id) ? { ...item, ...mapped } : item)),
+      })
+      bustProductCache(result.revision)
+      toast.success(result.message || 'Sale price set')
+      setSaleProduct(null)
+    } catch (saleError) {
+      toast.error(errorMessage(saleError, 'Could not set sale'))
+    } finally {
+      setBusy(false)
+    }
+  }
+  const clearSale = async () => {
+    if (!saleProduct?.id) return
+    setBusy(true)
+    try {
+      const { data: result } = await api.patch(`/glam-baddies/products/${saleProduct.id}/clear-sale`)
+      const mapped = mapProduct(result.product)
+      setData({
+        ...data,
+        products: asArray(data?.products).map((item) => (String(item.id) === String(mapped.id) ? { ...item, ...mapped, is_on_sale: false, oldPrice: undefined, badge: undefined } : item)),
+      })
+      bustProductCache(result.revision)
+      toast.success(result.message || 'Sale cleared')
+      setSaleProduct(null)
+    } catch (saleError) {
+      toast.error(errorMessage(saleError, 'Could not clear sale'))
+    } finally {
+      setBusy(false)
+    }
+  }
   const askDelete = (product) => setConfirm({
     ids: [product.id],
     title: `Delete ${product.name}?`,
@@ -305,11 +456,21 @@ export function AdminProducts() {
                         </div>
                       </td>
                       <td>{product.category}</td>
-                      <td>{formatCurrency(product.price)}</td>
+                      <td>
+                        {product.is_on_sale && product.oldPrice ? <del className="admin-old-price">{formatCurrency(product.oldPrice)}</del> : null}
+                        {' '}
+                        {formatCurrency(product.price)}
+                      </td>
                       <td><span className={product.stock < 6 ? 'low-stock' : ''}>{product.stock} units</span></td>
-                      <td><span className={`status ${product.is_active ? 'active' : 'draft'}`}>{product.is_active ? 'Active' : 'Inactive'}</span></td>
+                      <td>
+                        <span className={`status ${product.is_active ? 'active' : 'draft'}`}>{product.is_active ? 'Active' : 'Inactive'}</span>
+                        {product.is_on_sale ? <span className="on-sale-tag">ON SALE</span> : null}
+                      </td>
                       <td onClick={(event) => event.stopPropagation()}>
                         <div className="row-actions">
+                          <button type="button" className="admin-button primary sale-action-btn" onClick={() => setSaleProduct(product)}>
+                            {product.is_on_sale ? 'Edit discount' : 'Set discount'}
+                          </button>
                           <Link className="table-icon" to={`${ADMIN_PATH}/products/${product.id}/edit`} aria-label={`View ${product.name}`} title="View">
                             <Eye />
                           </Link>
@@ -368,7 +529,7 @@ export function AdminProducts() {
                       <h3>{product.name}</h3>
                       <span className={`status ${product.is_active ? 'active' : 'draft'}`}>{product.is_active ? 'Active' : 'Inactive'}</span>
                     </div>
-                    <p>{product.category || 'Uncategorised'}</p>
+                    <p>{product.category || 'Uncategorised'}{product.is_on_sale ? ' · ON SALE' : ''}</p>
                     <div className="product-mobile-meta">
                       <strong>{formatCurrency(product.price)}</strong>
                       <span className={product.stock < 6 ? 'low-stock' : ''}>{product.stock} in stock</span>
@@ -376,6 +537,9 @@ export function AdminProducts() {
                   </div>
                 </button>
                 <div className="product-mobile-actions">
+                  <button className="admin-button primary sale-action-btn" type="button" onClick={() => setSaleProduct(product)}>
+                    {product.is_on_sale ? 'Edit discount' : 'Set discount'}
+                  </button>
                   <Link className="admin-button" to={`${ADMIN_PATH}/products/${product.id}/edit`}>Edit</Link>
                   <button className="admin-button danger" type="button" onClick={() => askDelete(product)}>Delete</button>
                 </div>
@@ -387,6 +551,14 @@ export function AdminProducts() {
       ) : (
         <EmptyState title="No products found" text="Add a dress or change your search." action="Add New Product" to={`${ADMIN_PATH}/products/new`} />
       )}
+      <SaleModal
+        open={Boolean(saleProduct)}
+        product={saleProduct}
+        busy={busy}
+        onClose={() => { if (!busy) setSaleProduct(null) }}
+        onSave={saveSale}
+        onClear={clearSale}
+      />
       <ConfirmDialog
         open={Boolean(confirm)}
         title={confirm?.title}
@@ -415,6 +587,12 @@ export function ProductForm() {
   const [useNewAsMain, setUseNewAsMain] = useState(!id)
   const [saving, setSaving] = useState(false)
   const [primaryBusy, setPrimaryBusy] = useState(null)
+  const [discountOpen, setDiscountOpen] = useState(false)
+  const [discountMode, setDiscountMode] = useState('fixed')
+  const [oldPrice, setOldPrice] = useState('')
+  const [newPrice, setNewPrice] = useState('')
+  const [discountPercentInput, setDiscountPercentInput] = useState('20')
+  const [saleBusy, setSaleBusy] = useState(false)
   const { data, loading, error, retry, setData } = useAdminData(
     () => Promise.all([
       api.get('/glam-baddies/categories'),
@@ -432,6 +610,38 @@ export function ProductForm() {
   )
   const product = data?.product ? mapProduct(data.product) : null
   const productImages = asArray(data?.product?.images).filter((image) => typeof image === 'object' && image?.url)
+
+  useEffect(() => {
+    if (!product) {
+      setDiscountOpen(false)
+      setOldPrice('')
+      setNewPrice('')
+      setDiscountPercentInput('20')
+      setDiscountMode('fixed')
+      return
+    }
+    if (product.is_on_sale) {
+      setDiscountOpen(true)
+      setOldPrice(product.oldPrice != null ? String(Number(product.oldPrice).toFixed(2)) : '')
+      setNewPrice(product.price != null ? String(Number(product.price).toFixed(2)) : '')
+      setDiscountPercentInput(String(product.discount_percent || 20))
+      setDiscountMode(product.discount_percent ? 'percent' : 'fixed')
+    } else {
+      setDiscountOpen(false)
+      setOldPrice(product.price != null ? String(Number(product.price).toFixed(2)) : '')
+      setNewPrice('')
+      setDiscountPercentInput('20')
+      setDiscountMode('fixed')
+    }
+  }, [product?.id, product?.is_on_sale, product?.oldPrice, product?.price, product?.discount_percent])
+
+  useEffect(() => {
+    if (!discountOpen || discountMode !== 'percent') return
+    const base = Number(oldPrice)
+    const pct = Number(discountPercentInput)
+    if (!Number.isFinite(base) || base <= 0 || !Number.isFinite(pct) || pct < 1 || pct > 95) return
+    setNewPrice((base * (1 - pct / 100)).toFixed(2))
+  }, [discountOpen, discountMode, oldPrice, discountPercentInput])
 
   const syncImages = (images) => {
     setData({ ...data, product: { ...data.product, images } })
@@ -471,18 +681,94 @@ export function ProductForm() {
     if (!id) setUseNewAsMain(true)
   }
 
+  const oldNum = Number(oldPrice)
+  const newNum = Number(newPrice)
+  const discountPercent = discountMode === 'percent'
+    ? Number(discountPercentInput)
+    : (Number.isFinite(oldNum) && oldNum > 0 && Number.isFinite(newNum)
+      ? Math.round(((oldNum - newNum) / oldNum) * 100)
+      : null)
+  const discountValid = Number.isFinite(oldNum) && oldNum > 0
+    && Number.isFinite(newNum) && newNum > 0 && newNum < oldNum
+    && Number.isFinite(discountPercent) && discountPercent >= 1 && discountPercent <= 95
+  const youSave = discountValid ? oldNum - newNum : null
+
+  const applyDiscount = async (productId) => {
+    if (!productId || !discountValid) return false
+    const { data: result } = await api.patch(`/glam-baddies/products/${productId}/sale`, {
+      compare_at_price: oldNum,
+      sale_price: newNum,
+      discount_percent: Math.round(discountPercent),
+    })
+    bustProductCache(result?.revision)
+    if (data) {
+      setData({
+        ...data,
+        product: {
+          ...data.product,
+          ...result.product,
+          price: result.product?.price ?? newNum,
+          compare_at_price: result.product?.compare_at_price ?? oldNum,
+          is_on_sale: true,
+          discount_percent: result.product?.discount_percent ?? discountPercent,
+        },
+      })
+    }
+    return true
+  }
+
+  const clearDiscount = async () => {
+    if (!id) return
+    setSaleBusy(true)
+    try {
+      const { data: result } = await api.patch(`/glam-baddies/products/${id}/clear-sale`)
+      bustProductCache(result?.revision)
+      toast.success(result?.message || 'Discount cleared')
+      setDiscountOpen(false)
+      setNewPrice('')
+      if (data) {
+        setData({
+          ...data,
+          product: {
+            ...data.product,
+            ...result.product,
+            is_on_sale: false,
+            compare_at_price: null,
+            discount_percent: null,
+          },
+        })
+      }
+    } catch (clearError) {
+      toast.error(errorMessage(clearError, 'Could not clear discount'))
+    } finally {
+      setSaleBusy(false)
+    }
+  }
+
   const submit = async (event) => {
     event.preventDefault()
     const formElement = event.currentTarget
     setSaving(true)
     const form = new FormData(formElement)
     form.set('is_active', form.get('is_active') === 'true' ? 'true' : 'false')
+    // When a discount is set, the regular price field should match the sale (new) price.
+    if (discountOpen && discountValid) {
+      form.set('price', String(newNum))
+    }
     files.forEach((file) => form.append('images', file))
     if (files.length && (useNewAsMain || !id)) {
       form.set('primary_image_index', String(primaryNewIndex))
     }
     try {
-      await api({ method: id ? 'put' : 'post', url: id ? `/glam-baddies/products/${id}` : '/glam-baddies/products', data: form })
+      const { data: saved } = await api({
+        method: id ? 'put' : 'post',
+        url: id ? `/glam-baddies/products/${id}` : '/glam-baddies/products',
+        data: form,
+      })
+      const productId = id || saved?.product?.id || saved?.id
+      if (discountOpen && discountValid && productId) {
+        await applyDiscount(productId)
+      }
       bustProductCache()
       toast.success(id ? 'Product updated' : 'Product created')
       navigate(`${ADMIN_PATH}/products`)
@@ -496,6 +782,7 @@ export function ProductForm() {
   if (error) return <AdminPage title="Product"><ErrorState retry={retry} /></AdminPage>
   if (id && !product) return <AdminPage title="Product"><EmptyState title="Product not found" text="It may have been deleted." action="Back to products" to={`${ADMIN_PATH}/products`} /></AdminPage>
   const categoryOptions = asArray(data?.categories)
+  const { dresses, accessories, other } = groupCategories(categoryOptions)
   const defaultCategoryId = product?.category_id
     || categoryOptions.find((category) => category.slug === 'casual-dresses')?.id
     || categoryOptions[0]?.id
@@ -522,7 +809,25 @@ export function ProductForm() {
               Category
               {categoryOptions.length <= 1
                 ? <><input type="hidden" name="category_id" value={defaultCategoryId} /><input type="text" readOnly value={categoryOptions[0]?.name || 'Dresses'} className="readonly-field" /></>
-                : <select name="category_id" defaultValue={defaultCategoryId} required>{categoryOptions.map((category) => <option value={category.id} key={category.id}>{category.name}</option>)}</select>}
+                : (
+                  <select name="category_id" defaultValue={defaultCategoryId} required>
+                    {dresses.length ? (
+                      <optgroup label="Dresses">
+                        {dresses.map((category) => <option value={category.id} key={category.id}>{category.name}</option>)}
+                      </optgroup>
+                    ) : null}
+                    {accessories.length ? (
+                      <optgroup label="Accessories">
+                        {accessories.map((category) => <option value={category.id} key={category.id}>{category.name}</option>)}
+                      </optgroup>
+                    ) : null}
+                    {other.length ? (
+                      <optgroup label="More">
+                        {other.map((category) => <option value={category.id} key={category.id}>{category.name}</option>)}
+                      </optgroup>
+                    ) : null}
+                  </select>
+                )}
             </label>
           </section>
 
@@ -605,7 +910,128 @@ export function ProductForm() {
         <aside>
           <section className="admin-card">
             <h2>Pricing</h2>
-            <label>Price (GHS)<input name="price" type="number" min="0" step="0.01" required defaultValue={product?.price} placeholder="0.00" /></label>
+            <label>
+              Price (GHS)
+              <input
+                name="price"
+                type="number"
+                min="0"
+                step="0.01"
+                required
+                defaultValue={product?.price}
+                placeholder="0.00"
+                key={`price-${product?.id || 'new'}-${product?.price ?? ''}-${product?.is_on_sale ? 1 : 0}`}
+              />
+            </label>
+            <p className="settings-hint">Use Discount below to set an old price + sale price for the shop.</p>
+          </section>
+          <section className="admin-card product-discount-card">
+            <div className="card-head">
+              <div>
+                <h2>Discount</h2>
+                <p>Show % off and strikethrough on shop cards before customers open the item.</p>
+              </div>
+            </div>
+            {!discountOpen ? (
+              <button type="button" className="admin-button primary" onClick={() => {
+                setDiscountOpen(true)
+                if (!oldPrice && product?.price != null) setOldPrice(String(Number(product.price).toFixed(2)))
+              }}
+              >
+                Add discount
+              </button>
+            ) : (
+              <div className="stack-form">
+                <div className="discount-mode-toggle" role="group" aria-label="Discount type">
+                  <button type="button" className={discountMode === 'fixed' ? 'is-active' : ''} onClick={() => setDiscountMode('fixed')}>Fixed price</button>
+                  <button type="button" className={discountMode === 'percent' ? 'is-active' : ''} onClick={() => setDiscountMode('percent')}>Percentage</button>
+                </div>
+                <label>
+                  Current / old price (GHS)
+                  <input
+                    type="number"
+                    min="0.01"
+                    step="0.01"
+                    value={oldPrice}
+                    onChange={(event) => setOldPrice(event.target.value)}
+                    placeholder="e.g. 200.00"
+                  />
+                </label>
+                {discountMode === 'percent' ? (
+                  <label>
+                    Discount %
+                    <input
+                      type="number"
+                      min="1"
+                      max="95"
+                      step="1"
+                      value={discountPercentInput}
+                      onChange={(event) => setDiscountPercentInput(event.target.value)}
+                      placeholder="e.g. 20"
+                    />
+                  </label>
+                ) : null}
+                <label>
+                  New price (GHS)
+                  <input
+                    type="number"
+                    min="0.01"
+                    step="0.01"
+                    value={newPrice}
+                    readOnly={discountMode === 'percent'}
+                    onChange={(event) => setNewPrice(event.target.value)}
+                    placeholder="e.g. 150.00"
+                  />
+                </label>
+                <p className="discount-preview">
+                  {discountValid ? (
+                    <>
+                      Shop shows <del>{formatCurrency(oldNum)}</del>{' '}
+                      <span className="sale-price">{formatCurrency(newNum)}</span>
+                      {' '}· −{Math.round(discountPercent)}% · You save {formatCurrency(youSave)}
+                    </>
+                  ) : discountMode === 'percent' ? (
+                    'Enter current price and percent — new price calculates automatically.'
+                  ) : (
+                    'Enter old and new price — % and “You save” calculate automatically.'
+                  )}
+                </p>
+                <div className="form-actions" style={{ marginTop: '0.75rem' }}>
+                  {id && product?.is_on_sale ? (
+                    <button type="button" className="admin-button danger" disabled={saleBusy} onClick={clearDiscount}>
+                      {saleBusy ? 'Clearing…' : 'Clear discount'}
+                    </button>
+                  ) : (
+                    <button type="button" className="admin-button" onClick={() => { setDiscountOpen(false); setNewPrice('') }}>
+                      Cancel
+                    </button>
+                  )}
+                  {id ? (
+                    <button
+                      type="button"
+                      className="admin-button primary"
+                      disabled={!discountValid || saleBusy}
+                      onClick={async () => {
+                        setSaleBusy(true)
+                        try {
+                          await applyDiscount(id)
+                          toast.success('Discount applied — customers will see % and strike on cards')
+                        } catch (saleError) {
+                          toast.error(errorMessage(saleError, 'Could not apply discount'))
+                        } finally {
+                          setSaleBusy(false)
+                        }
+                      }}
+                    >
+                      {saleBusy ? 'Saving…' : 'Apply discount'}
+                    </button>
+                  ) : null}
+                </div>
+                {!id ? (
+                  <p className="settings-hint">Discount will apply when you save this new product.</p>
+                ) : null}
+              </div>
+            )}
           </section>
           <section className="admin-card">
             <h2>Inventory</h2>
@@ -621,7 +1047,7 @@ export function ProductForm() {
   )
 }
 
-const orderStatuses = ['pending', 'paid', 'shipped', 'delivered', 'cancelled']
+const orderStatuses = ['pending', 'paid', 'shipped', 'out_for_delivery', 'delivered', 'cancelled']
 export function AdminOrders() {
   const [status, setStatus] = useState('')
   const [page, setPage] = useState(1)
@@ -824,6 +1250,10 @@ export function AdminOrderDetail() {
   const [cancelOpen, setCancelOpen] = useState(false)
   const [deleting, setDeleting] = useState(false)
   const [busy, setBusy] = useState(false)
+  const [riderOpen, setRiderOpen] = useState(false)
+  const [riderForm, setRiderForm] = useState({ rider_name: '', rider_phone: '', rider_photo_url: '' })
+  const [riderPhotoFile, setRiderPhotoFile] = useState(null)
+  const [riderPhotoPreview, setRiderPhotoPreview] = useState('')
   const { data, loading, error, retry, setData } = useAdminData(
     () => api.get(`/glam-baddies/orders/${id}`).then(({ data }) => data.order), [id],
   )
@@ -904,13 +1334,49 @@ export function AdminOrderDetail() {
       setConfirmOpen(false)
     }
   }
+  const openRider = () => {
+    setRiderForm({
+      rider_name: data?.rider_name || '',
+      rider_phone: data?.rider_phone || '',
+      rider_photo_url: data?.rider_photo_url || '',
+    })
+    setRiderPhotoFile(null)
+    setRiderPhotoPreview(data?.rider_photo_url ? resolveImageUrl(data.rider_photo_url) : '')
+    setRiderOpen(true)
+  }
+  const onRiderPhoto = (event) => {
+    const file = event.target.files?.[0]
+    if (!file) return
+    setRiderPhotoFile(file)
+    setRiderPhotoPreview(URL.createObjectURL(file))
+  }
+  const saveRider = async (event) => {
+    event.preventDefault()
+    setBusy(true)
+    try {
+      const form = new FormData()
+      form.set('rider_name', riderForm.rider_name)
+      form.set('rider_phone', riderForm.rider_phone)
+      if (riderForm.rider_photo_url) form.set('rider_photo_url', riderForm.rider_photo_url)
+      if (riderPhotoFile) form.set('photo', riderPhotoFile)
+      const { data: result } = await api.patch(`/glam-baddies/orders/${id}/assign-rider`, form)
+      setData({ ...data, ...result.order })
+      toast.success(result.message || 'Rider assigned')
+      setRiderOpen(false)
+      setRiderPhotoFile(null)
+    } catch (riderError) {
+      toast.error(errorMessage(riderError, 'Could not assign rider'))
+    } finally {
+      setBusy(false)
+    }
+  }
   if (loading) return <AdminPage title="Order"><LoadingGrid /></AdminPage>
   if (error) return <AdminPage title="Order"><ErrorState retry={retry} /></AdminPage>
   if (!data) return <AdminPage title="Order"><EmptyState title="Order not found" text="This order may have been removed." action="Back to orders" to={`${ADMIN_PATH}/orders`} /></AdminPage>
   const address = typeof data.shipping_address === 'string' ? JSON.parse(data.shipping_address) : (data.shipping_address || {})
   const bagItems = asArray(address.bag_items)
   const fulfillment = String(address.fulfillment_method || 'delivery').toLowerCase()
-  return <AdminPage title={`Order #${data.id}`} intro={`Placed ${new Date(data.created_at).toLocaleString()}`} action={<div className="form-actions"><button type="button" className="admin-button danger" disabled={deleting} onClick={() => setConfirmOpen(true)}><Trash2 /> Delete order</button><button className="admin-button" onClick={() => navigate(`${ADMIN_PATH}/orders`)}>Back to orders</button></div>}>
+  return <AdminPage title={`Order #${data.id}`} intro={`Placed ${new Date(data.created_at).toLocaleString()}`} action={<div className="form-actions"><button type="button" className="admin-button" onClick={openRider}>{data.rider_name ? 'Edit rider' : 'Assign rider'}</button><button type="button" className="admin-button danger" disabled={deleting} onClick={() => setConfirmOpen(true)}><Trash2 /> Delete order</button><button className="admin-button" onClick={() => navigate(`${ADMIN_PATH}/orders`)}>Back to orders</button></div>}>
     <ConfirmDialog
       open={confirmOpen}
       title={`Delete order #${data.id}?`}
@@ -941,6 +1407,22 @@ export function AdminOrderDetail() {
           <div><small>Order ID</small><div><CopyValue value={String(data.id)} label="Copy order id" /></div></div>
           {data.payment_reference && <div><small>Payment reference</small><div><CopyValue value={data.payment_reference} label="Copy payment reference" /></div></div>}
           <p><small>Total</small><br /><strong>{formatCurrency(Number(data.total ?? data.total_cents / 100))}</strong></p>
+          {data.rider_name ? (
+            <div className="admin-rider-summary">
+              {data.rider_photo_url ? (
+                <img src={resolveImageUrl(data.rider_photo_url)} alt="" className="admin-rider-photo" />
+              ) : (
+                <span className="admin-rider-avatar">{String(data.rider_name).split(' ').map((p) => p[0]).join('').slice(0, 2)}</span>
+              )}
+              <div>
+                <small>Assigned rider</small>
+                <strong>{data.rider_name}</strong>
+                <span>{data.rider_phone || '—'}</span>
+              </div>
+            </div>
+          ) : (
+            <p className="admin-rider-empty">No rider assigned yet. Use Assign rider above.</p>
+          )}
         </div>
       </section>
       <section className="admin-card">
@@ -952,6 +1434,46 @@ export function AdminOrderDetail() {
         <p><small>Additional note</small><br />{address.additional_note || address.location_note || '—'}</p>
       </section>
     </div>
+    {riderOpen ? (
+      <section className="admin-card" style={{ marginTop: '1.5rem' }}>
+        <div className="card-head"><div><h2>Assign rider</h2><p>Name, phone and photo show on the customer Track order page</p></div></div>
+        <form className="stack-form" onSubmit={saveRider}>
+          <label>Rider name<input required value={riderForm.rider_name} onChange={(event) => setRiderForm((current) => ({ ...current, rider_name: event.target.value }))} placeholder="e.g. Kwame Mensah" /></label>
+          <label>Contact / phone<input required type="tel" value={riderForm.rider_phone} onChange={(event) => setRiderForm((current) => ({ ...current, rider_phone: event.target.value }))} placeholder="e.g. 0241234567" /></label>
+          <label>
+            Profile photo
+            <input type="file" accept="image/png,image/jpeg,image/webp,image/gif" onChange={onRiderPhoto} />
+          </label>
+          {riderPhotoPreview ? (
+            <div className="admin-rider-summary">
+              <img src={riderPhotoPreview} alt="" className="admin-rider-photo" />
+              <div>
+                <small>Photo preview</small>
+                <strong>{riderForm.rider_name || 'Rider'}</strong>
+                <span>{riderForm.rider_phone || '—'}</span>
+              </div>
+            </div>
+          ) : null}
+          <label>
+            Or photo URL (optional)
+            <input
+              type="url"
+              value={riderForm.rider_photo_url}
+              onChange={(event) => {
+                const value = event.target.value
+                setRiderForm((current) => ({ ...current, rider_photo_url: value }))
+                if (!riderPhotoFile) setRiderPhotoPreview(value ? resolveImageUrl(value) : '')
+              }}
+              placeholder="https://..."
+            />
+          </label>
+          <div className="form-actions">
+            <button type="button" className="admin-button" disabled={busy} onClick={() => setRiderOpen(false)}>Cancel</button>
+            <button type="submit" className="admin-button primary" disabled={busy}>{busy ? 'Saving…' : 'Save rider'}</button>
+          </div>
+        </form>
+      </section>
+    ) : null}
     <section className="admin-card table-card" style={{ marginTop: '1.5rem' }}>
       <div className="card-head"><div><h2>Items</h2><p>{data.items?.length || 0} line items</p></div></div>
       <div className="data-table"><table><thead><tr><th>Product</th><th>Colour</th><th>Size</th><th>Qty</th><th>Unit</th><th>Total</th></tr></thead><tbody>{(data.items || []).map((item) => {
@@ -1472,6 +1994,9 @@ export function AdminSettings() {
         usd_to_ghs_rate: Number(settings.usd_to_ghs_rate) > 0 ? Number(settings.usd_to_ghs_rate) : 15.5,
         announcement_text: settings.announcement_text || 'Shop · Slay · Shine',
         homepage_features: asArray(settings.homepage_features),
+        default_rider_name: settings.default_rider_name || '',
+        default_rider_phone: settings.default_rider_phone || '',
+        default_rider_photo_url: settings.default_rider_photo_url || '',
       }
     }),
     [],
@@ -1650,7 +2175,7 @@ export function AdminSettings() {
           </button>
           <button type="button" role="tab" aria-selected={tab === 'store'} className={tab === 'store' ? 'active' : ''} onClick={() => setTab('store')}>
             <span>Store</span>
-            <small>Purchases, banner &amp; homepage tiles</small>
+            <small>Purchases, banner, rider &amp; homepage</small>
           </button>
           <button type="button" role="tab" aria-selected={tab === 'payments'} className={tab === 'payments' ? 'active' : ''} onClick={() => setTab('payments')}>
             <span>Payments</span>
@@ -1820,6 +2345,16 @@ export function AdminSettings() {
               <section className="admin-card">
                 <div className="card-head">
                   <div>
+                    <h2>Delivery rider</h2>
+                    <p>Set the rider name, phone and photo under the Rider page in the sidebar.</p>
+                  </div>
+                  <Link className="admin-button" to={`${ADMIN_PATH}/rider`}>Open Rider</Link>
+                </div>
+              </section>
+
+              <section className="admin-card">
+                <div className="card-head">
+                  <div>
                     <h2>Homepage category tiles</h2>
                     <p>
                       Every category has its own homepage image tile. Edit images and text under{' '}
@@ -1932,6 +2467,127 @@ export function AdminSettings() {
           )}
         </div>
       </div>
+    </AdminPage>
+  )
+}
+
+export function AdminRider() {
+  const [saving, setSaving] = useState(false)
+  const [photoBusy, setPhotoBusy] = useState(false)
+  const { data, loading, error, retry, setData } = useAdminData(
+    () => api.get('/glam-baddies/settings').then(({ data: settings }) => ({
+      default_rider_name: settings.default_rider_name || '',
+      default_rider_phone: settings.default_rider_phone || '',
+      default_rider_photo_url: settings.default_rider_photo_url || '',
+    })),
+    [],
+  )
+
+  const save = async (event) => {
+    event.preventDefault()
+    if (!data || saving) return
+    setSaving(true)
+    try {
+      const { data: result } = await api.put('/glam-baddies/settings', {
+        default_rider_name: data.default_rider_name,
+        default_rider_phone: data.default_rider_phone,
+        default_rider_photo_url: data.default_rider_photo_url,
+      })
+      setData({
+        default_rider_name: result.default_rider_name || '',
+        default_rider_phone: result.default_rider_phone || '',
+        default_rider_photo_url: result.default_rider_photo_url || '',
+      })
+      toast.success(result.message || 'Rider saved — customers can call them from Track order')
+    } catch (saveError) {
+      toast.error(errorMessage(saveError, 'Could not save rider'))
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const onPhoto = async (event) => {
+    const file = event.target.files?.[0]
+    if (!file || !data) return
+    setPhotoBusy(true)
+    try {
+      const form = new FormData()
+      form.set('photo', file)
+      const { data: result } = await api.post('/glam-baddies/settings/default-rider-photo', form)
+      setData({
+        ...data,
+        default_rider_photo_url: result.default_rider_photo_url || result.uploaded_url || '',
+      })
+      toast.success(result.message || 'Rider photo updated')
+    } catch (uploadError) {
+      toast.error(errorMessage(uploadError, 'Could not upload rider photo'))
+    } finally {
+      setPhotoBusy(false)
+      event.target.value = ''
+    }
+  }
+
+  if (loading) return <AdminPage title="Rider"><LoadingGrid /></AdminPage>
+  if (error) return <AdminPage title="Rider"><ErrorState retry={retry} /></AdminPage>
+
+  return (
+    <AdminPage
+      title="Rider"
+      intro="Set the delivery rider shown on every Track order page. Customers can tap Call to phone them."
+    >
+      <form className="admin-card stack-form" onSubmit={save} style={{ maxWidth: 520 }}>
+        <div className="card-head">
+          <div>
+            <h2>Delivery rider profile</h2>
+            <p>Name, contact number and profile picture for the Track order page.</p>
+          </div>
+        </div>
+        <label>
+          Rider name
+          <input
+            required
+            value={data?.default_rider_name ?? ''}
+            onChange={(event) => setData({ ...data, default_rider_name: event.target.value })}
+            placeholder="e.g. Kwame Mensah"
+          />
+        </label>
+        <label>
+          Phone number
+          <input
+            required
+            type="tel"
+            value={data?.default_rider_phone ?? ''}
+            onChange={(event) => setData({ ...data, default_rider_phone: event.target.value })}
+            placeholder="e.g. 0241234567"
+          />
+        </label>
+        <label>
+          Profile picture
+          <input type="file" accept="image/png,image/jpeg,image/webp,image/gif" onChange={onPhoto} disabled={photoBusy} />
+        </label>
+        {data?.default_rider_photo_url || data?.default_rider_name ? (
+          <div className="admin-rider-summary" style={{ borderTop: 0, marginTop: 0, paddingTop: 0 }}>
+            {data.default_rider_photo_url ? (
+              <img src={resolveImageUrl(data.default_rider_photo_url)} alt="" className="admin-rider-photo" />
+            ) : (
+              <span className="admin-rider-avatar">
+                {String(data.default_rider_name || 'R').split(' ').map((p) => p[0]).join('').slice(0, 2)}
+              </span>
+            )}
+            <div>
+              <small>Preview on Track order</small>
+              <strong>{data.default_rider_name || 'Rider'}</strong>
+              <span>{data.default_rider_phone || '—'}</span>
+            </div>
+          </div>
+        ) : null}
+        <p className="settings-hint">Saving updates this rider on all orders so every customer sees them when tracking.</p>
+        <div className="form-actions">
+          <button type="submit" className="admin-button primary" disabled={saving || photoBusy}>
+            <Check /> {saving ? 'Saving…' : 'Save rider'}
+          </button>
+        </div>
+      </form>
     </AdminPage>
   )
 }

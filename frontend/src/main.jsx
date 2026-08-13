@@ -7,6 +7,7 @@ import './copy.css'
 import './store-ui.css'
 import './ProductImageGallery.css'
 import './admin-mobile.css'
+import './glam-features.css'
 import './dark-mode.css'
 import App from './App.jsx'
 

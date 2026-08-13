@@ -352,11 +352,17 @@ exports.trackByPhone = async (req, res, next) => {
     }
     const matchDigits = digits.slice(-9);
 
+    try {
+      const { ensureCatalogueExtras } = require('../services/catalogueExtras');
+      await ensureCatalogueExtras();
+    } catch { /* ignore */ }
+
     const { rows } = await db.query(
       `SELECT o.id, o.status, o.currency, o.total_cents,
               ROUND(o.total_cents / 100.0, 2) AS total,
               o.payment_reference, o.paid_at, o.created_at, o.updated_at,
               o.shipping_address,
+              o.rider_name, o.rider_phone, o.rider_photo_url, o.rider_assigned_at,
               ${ORDER_ITEMS_JSON}
        FROM orders o
        LEFT JOIN users u ON u.id = o.user_id
@@ -371,12 +377,39 @@ exports.trackByPhone = async (req, res, next) => {
       throw new ApiError(404, 'No orders found for that phone number');
     }
 
+    let defaultRider = null;
+    try {
+      const { getSettingsRow } = require('./store.controller');
+      const settings = await getSettingsRow();
+      if (settings?.default_rider_name) {
+        defaultRider = {
+          name: settings.default_rider_name,
+          phone: settings.default_rider_phone || null,
+          photo_url: settings.default_rider_photo_url || null,
+          assigned_at: null,
+        };
+      }
+    } catch { /* ignore */ }
+
     const orders = rows.map((order) => {
       const address =
         typeof order.shipping_address === 'string'
           ? JSON.parse(order.shipping_address)
           : order.shipping_address || {};
       const bagItems = Array.isArray(address.bag_items) ? address.bag_items : [];
+      const fulfillmentMethod = String(address.fulfillment_method || 'delivery').toLowerCase() === 'pickup'
+        ? 'pickup'
+        : 'delivery';
+      const assignedRider = order.rider_name
+        ? {
+            name: order.rider_name,
+            phone: order.rider_phone || null,
+            photo_url: order.rider_photo_url || null,
+            assigned_at: order.rider_assigned_at || null,
+          }
+        : defaultRider;
+      // Pickup orders never show a delivery rider.
+      const rider = fulfillmentMethod === 'pickup' ? null : assignedRider;
       return {
         id: order.id,
         status: order.status,
@@ -386,13 +419,14 @@ exports.trackByPhone = async (req, res, next) => {
         paid_at: order.paid_at,
         created_at: order.created_at,
         updated_at: order.updated_at,
-        fulfillment_method: address.fulfillment_method || 'delivery',
+        fulfillment_method: fulfillmentMethod,
         full_name: address.full_name || address.guest_name || null,
         phone: address.phone || null,
         location: address.location || address.street || null,
         additional_note: address.additional_note || address.location_note || null,
         cancel_reason: address.cancel_reason || null,
         cancelled_at: address.cancelled_at || null,
+        rider,
         items: (order.items || []).map((item) => {
           const snap =
             bagItems.find(
@@ -413,6 +447,7 @@ exports.trackByPhone = async (req, res, next) => {
       phone: orders[0]?.phone || raw,
       orders,
       order: orders[0],
+      default_rider: defaultRider,
     });
   } catch (err) {
     next(err);
