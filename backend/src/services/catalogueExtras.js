@@ -10,7 +10,8 @@ async function ensureCatalogueExtras() {
       ADD COLUMN IF NOT EXISTS compare_at_price_cents INTEGER,
       ADD COLUMN IF NOT EXISTS discount_percent INTEGER,
       ADD COLUMN IF NOT EXISTS sale_ends_at TIMESTAMPTZ,
-      ADD COLUMN IF NOT EXISTS is_on_sale BOOLEAN NOT NULL DEFAULT FALSE
+      ADD COLUMN IF NOT EXISTS is_on_sale BOOLEAN NOT NULL DEFAULT FALSE,
+      ADD COLUMN IF NOT EXISTS available_colors JSONB
   `);
   await db.query(`
     ALTER TABLE orders

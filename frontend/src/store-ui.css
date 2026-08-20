@@ -1197,6 +1197,35 @@
     linear-gradient(135deg, #c4a484, #e8d5b7);
   background-size: 100% 100%;
 }
+.color-swatch.is-unavailable {
+  position: relative;
+  opacity: 0.42;
+  cursor: not-allowed;
+  filter: grayscale(0.35);
+}
+.color-swatch.is-unavailable::after {
+  content: '';
+  position: absolute;
+  inset: 4px;
+  border-radius: 50%;
+  background: linear-gradient(
+    to top right,
+    transparent calc(50% - 1px),
+    rgba(26, 18, 22, 0.72) calc(50% - 1px),
+    rgba(26, 18, 22, 0.72) calc(50% + 1px),
+    transparent calc(50% + 1px)
+  );
+  pointer-events: none;
+}
+.color-swatch.is-unavailable:hover {
+  transform: none;
+  border-color: rgba(0, 0, 0, 0.12);
+}
+.color-availability-hint {
+  margin: 0.65rem 0 0;
+  font-size: 0.78rem;
+  color: var(--muted, #7a6570);
+}
 .product-gallery-wrap {
   display: grid;
   gap: 0.75rem;
@@ -1452,6 +1481,16 @@
 .related-dresses .product-grid { margin-top: 0.5rem; }
 html[data-theme="dark"] .color-swatch { box-shadow: inset 0 0 0 2px #1a1a1a; border-color: #2e2e2e; }
 html[data-theme="dark"] .color-swatch.selected { border-color: #e91e8c; }
+html[data-theme="dark"] .color-swatch.is-unavailable::after {
+  background: linear-gradient(
+    to top right,
+    transparent calc(50% - 1px),
+    rgba(255, 255, 255, 0.75) calc(50% - 1px),
+    rgba(255, 255, 255, 0.75) calc(50% + 1px),
+    transparent calc(50% + 1px)
+  );
+}
+html[data-theme="dark"] .color-availability-hint { color: #b0b0b0; }
 html[data-theme="dark"] .related-dresses { border-top-color: #2e2e2e; }
 html[data-theme="dark"] .fulfillment-card { background: #161616; border-color: #2e2e2e; }
 html[data-theme="dark"] .fulfillment-card.selected { background: #241018; }

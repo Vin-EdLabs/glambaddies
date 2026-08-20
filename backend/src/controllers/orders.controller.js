@@ -93,6 +93,38 @@ function normalizeShipping(shippingAddress) {
   };
 }
 
+function normalizeColorStock(raw) {
+  if (raw == null) return null;
+  if (Array.isArray(raw)) {
+    const map = {};
+    for (const entry of raw) {
+      if (typeof entry === 'string') {
+        const name = entry.trim();
+        if (name) map[name] = map[name] != null ? map[name] : 1;
+        continue;
+      }
+      if (entry && typeof entry === 'object') {
+        const name = String(entry.name || entry.color || '').trim();
+        if (!name) continue;
+        const qty = Number(entry.qty ?? entry.quantity ?? entry.stock ?? 0);
+        map[name] = Number.isFinite(qty) && qty >= 0 ? Math.floor(qty) : 0;
+      }
+    }
+    return map;
+  }
+  if (typeof raw === 'object') {
+    const map = {};
+    for (const [name, value] of Object.entries(raw)) {
+      const key = String(name || '').trim();
+      if (!key) continue;
+      const qty = Number(value);
+      map[key] = Number.isFinite(qty) && qty >= 0 ? Math.floor(qty) : 0;
+    }
+    return map;
+  }
+  return null;
+}
+
 function normalizeItems(rawItems) {
   if (!Array.isArray(rawItems) || rawItems.length === 0) {
     throw new ApiError(400, 'items are required');
@@ -101,24 +133,32 @@ function normalizeItems(rawItems) {
   for (const raw of rawItems) {
     const productId = Number(raw?.product_id ?? raw?.id);
     const quantity = Number(raw?.quantity ?? 1);
+    const color = raw?.color ? String(raw.color).trim() : '';
     if (!Number.isInteger(productId) || productId < 1) {
       throw new ApiError(400, 'Each item needs a valid product_id');
     }
     if (!Number.isInteger(quantity) || quantity < 1) {
       throw new ApiError(400, 'Each item quantity must be a positive integer');
     }
-    merged.set(productId, (merged.get(productId) || 0) + quantity);
+    const key = `${productId}::${color}`;
+    const existing = merged.get(key);
+    if (existing) {
+      existing.quantity += quantity;
+    } else {
+      merged.set(key, {
+        product_id: productId,
+        quantity,
+        color: color || null,
+      });
+    }
   }
-  return [...merged.entries()].map(([product_id, quantity]) => ({
-    product_id,
-    quantity,
-  }));
+  return [...merged.values()];
 }
 
 async function createOrderFromItems(client, { userId, items, shippingAddress }) {
-  const productIds = items.map((item) => item.product_id);
+  const productIds = [...new Set(items.map((item) => item.product_id))];
   const { rows: products } = await client.query(
-    `SELECT id, name, price_cents, stock, is_active
+    `SELECT id, name, price_cents, stock, is_active, available_colors
      FROM products
      WHERE id = ANY($1::int[])
      ORDER BY id
@@ -126,6 +166,10 @@ async function createOrderFromItems(client, { userId, items, shippingAddress }) 
     [productIds]
   );
   const byId = new Map(products.map((product) => [product.id, product]));
+  const remainingStock = new Map(products.map((product) => [product.id, Number(product.stock) || 0]));
+  const colorMaps = new Map(
+    products.map((product) => [product.id, normalizeColorStock(product.available_colors)])
+  );
 
   const lockedRows = [];
   for (const item of items) {
@@ -133,17 +177,35 @@ async function createOrderFromItems(client, { userId, items, shippingAddress }) 
     if (!product || !product.is_active) {
       throw new ApiError(400, `Product #${item.product_id} is no longer available`);
     }
-    if (product.stock < item.quantity) {
+    const stockLeft = remainingStock.get(item.product_id);
+    if (stockLeft < item.quantity) {
       throw new ApiError(
         400,
-        `Insufficient stock for "${product.name}" (available: ${product.stock})`
+        `Insufficient stock for "${product.name}" (available: ${stockLeft})`
       );
     }
+    remainingStock.set(item.product_id, stockLeft - item.quantity);
+
+    const colorMap = colorMaps.get(item.product_id);
+    if (colorMap != null && item.color) {
+      const colorLeft = colorMap[item.color] ?? 0;
+      if (colorLeft < item.quantity) {
+        throw new ApiError(
+          400,
+          colorLeft <= 0
+            ? `"${item.color}" is sold out for "${product.name}". Please choose another colour.`
+            : `Only ${colorLeft} left in "${item.color}" for "${product.name}"`
+        );
+      }
+      colorMap[item.color] = colorLeft - item.quantity;
+    }
+
     lockedRows.push({
       product_id: product.id,
       name: product.name,
       price_cents: product.price_cents,
       quantity: item.quantity,
+      color: item.color,
     });
   }
 
@@ -170,6 +232,14 @@ async function createOrderFromItems(client, { userId, items, shippingAddress }) 
     await client.query(
       'UPDATE products SET stock = stock - $1, updated_at = NOW() WHERE id = $2',
       [item.quantity, item.product_id]
+    );
+  }
+
+  for (const [productId, colorMap] of colorMaps.entries()) {
+    if (colorMap == null) continue;
+    await client.query(
+      'UPDATE products SET available_colors = $1::jsonb, updated_at = NOW() WHERE id = $2',
+      [JSON.stringify(colorMap), productId]
     );
   }
 

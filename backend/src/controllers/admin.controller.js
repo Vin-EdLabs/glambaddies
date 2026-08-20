@@ -670,6 +670,49 @@ function parseProductBody(body, { partial = false } = {}) {
   if (body.is_active !== undefined) {
     fields.is_active = body.is_active === true || body.is_active === 'true';
   }
+  if (body.available_colors !== undefined || body['available_colors[]'] !== undefined) {
+    const raw = body.available_colors !== undefined
+      ? body.available_colors
+      : body['available_colors[]'];
+    let parsed = raw;
+    if (typeof raw === 'string') {
+      const trimmed = raw.trim();
+      if (!trimmed) {
+        fields.available_colors = null;
+        return fields;
+      }
+      try {
+        parsed = JSON.parse(trimmed);
+      } catch {
+        parsed = trimmed.split(',').map((item) => item.trim()).filter(Boolean);
+      }
+    }
+
+    const stockMap = {};
+    if (Array.isArray(parsed)) {
+      for (const entry of parsed) {
+        if (typeof entry === 'string') {
+          const name = entry.trim();
+          if (name) stockMap[name] = stockMap[name] != null ? stockMap[name] : 1;
+          continue;
+        }
+        if (entry && typeof entry === 'object') {
+          const name = String(entry.name || entry.color || '').trim();
+          if (!name) continue;
+          const qty = Number(entry.qty ?? entry.quantity ?? entry.stock ?? 0);
+          stockMap[name] = Number.isFinite(qty) && qty >= 0 ? Math.floor(qty) : 0;
+        }
+      }
+    } else if (parsed && typeof parsed === 'object') {
+      for (const [name, value] of Object.entries(parsed)) {
+        const key = String(name || '').trim();
+        if (!key) continue;
+        const qty = Number(value);
+        stockMap[key] = Number.isFinite(qty) && qty >= 0 ? Math.floor(qty) : 0;
+      }
+    }
+    fields.available_colors = stockMap;
+  }
   return fields;
 }
 
@@ -756,8 +799,8 @@ exports.createProduct = async (req, res, next) => {
     const slug = `${slugify(fields.name)}-${Date.now().toString(36)}`;
 
     const { rows } = await db.query(
-      `INSERT INTO products (name, slug, description, price_cents, stock, category_id, is_active)
-       VALUES ($1, $2, $3, $4, $5, $6, $7)
+      `INSERT INTO products (name, slug, description, price_cents, stock, category_id, is_active, available_colors)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb)
        RETURNING *, ROUND(price_cents / 100.0, 2) AS price`,
       [
         fields.name,
@@ -767,6 +810,7 @@ exports.createProduct = async (req, res, next) => {
         fields.stock,
         fields.category_id ?? null,
         fields.is_active ?? true,
+        fields.available_colors != null ? JSON.stringify(fields.available_colors) : null,
       ]
     );
     const product = rows[0];
@@ -792,6 +836,11 @@ exports.updateProduct = async (req, res, next) => {
     const sets = [];
     const params = [];
     for (const [column, value] of Object.entries(fields)) {
+      if (column === 'available_colors') {
+        params.push(value == null ? null : JSON.stringify(value));
+        sets.push(`available_colors = $${params.length}::jsonb`);
+        continue;
+      }
       params.push(value);
       sets.push(`${column} = $${params.length}`);
     }

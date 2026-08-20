@@ -56,6 +56,7 @@ CREATE TABLE products (
     discount_percent INTEGER CHECK (discount_percent IS NULL OR (discount_percent >= 0 AND discount_percent <= 95)),
     sale_ends_at TIMESTAMPTZ,
     is_on_sale   BOOLEAN      NOT NULL DEFAULT FALSE,
+    available_colors JSONB,
     stock        INTEGER      NOT NULL DEFAULT 0 CHECK (stock >= 0),
     is_active    BOOLEAN      NOT NULL DEFAULT TRUE,
     created_at   TIMESTAMPTZ  NOT NULL DEFAULT NOW(),

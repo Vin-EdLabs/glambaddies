@@ -180,11 +180,11 @@ function wrapReceipt({ preheader, title, intro, order, statusKey, extraNote }) {
       <td align="center">
         <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:560px;background:#fff8f6;border:1px solid #efd5d0;border-radius:18px;overflow:hidden;">
           <tr>
-            <td style="padding:28px 28px 18px;background:linear-gradient(135deg,#1a1216 0%,#3a1a28 55%,#e91e8c 140%);color:#fff;">
-              <img src="${escapeHtml(LOGO_URL)}" alt="${escapeHtml(APP_NAME)}" width="72" height="72" style="display:block;border-radius:12px;background:#fff;padding:4px;" />
-              <div style="margin-top:14px;font-size:11px;letter-spacing:0.22em;text-transform:uppercase;opacity:0.85;">Shop · Slay · Shine</div>
-              <div style="margin-top:10px;font-size:28px;line-height:1.1;font-weight:500;">${escapeHtml(APP_NAME)}</div>
-              <div style="margin-top:14px;display:inline-block;padding:6px 12px;border-radius:999px;background:rgba(255,255,255,0.14);font-family:Arial,Helvetica,sans-serif;font-size:11px;letter-spacing:0.08em;text-transform:uppercase;">
+            <td style="padding:28px 28px 20px;background:#e91e8c;color:#ffffff;">
+              <img src="${escapeHtml(LOGO_URL)}" alt="${escapeHtml(APP_NAME)}" width="72" height="72" style="display:block;border-radius:12px;background:#ffffff;padding:4px;" />
+              <div style="margin-top:14px;font-family:Arial,Helvetica,sans-serif;font-size:11px;letter-spacing:0.22em;text-transform:uppercase;color:#ffffff;">Shop · Slay · Shine</div>
+              <div style="margin-top:10px;font-size:28px;line-height:1.1;font-weight:500;color:#ffffff;">${escapeHtml(APP_NAME)}</div>
+              <div style="margin-top:14px;display:inline-block;padding:6px 12px;border-radius:999px;background:rgba(255,255,255,0.22);font-family:Arial,Helvetica,sans-serif;font-size:11px;letter-spacing:0.08em;text-transform:uppercase;color:#ffffff;">
                 ${escapeHtml(status.label)}
               </div>
             </td>
@@ -427,11 +427,11 @@ function wrapAdminOrderAlert(order) {
       <td align="center">
         <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:560px;background:#fff8f6;border:1px solid #efd5d0;border-radius:18px;overflow:hidden;">
           <tr>
-            <td style="padding:28px 28px 18px;background:linear-gradient(135deg,#1a1216 0%,#3a1a28 55%,#e91e8c 140%);color:#fff;">
-              <img src="${escapeHtml(LOGO_URL)}" alt="${escapeHtml(APP_NAME)}" width="64" height="64" style="display:block;border-radius:12px;background:#fff;padding:4px;" />
-              <div style="margin-top:14px;font-size:11px;letter-spacing:0.22em;text-transform:uppercase;opacity:0.85;">Admin alert</div>
-              <div style="margin-top:10px;font-size:28px;line-height:1.1;font-weight:500;">New order received</div>
-              <div style="margin-top:14px;display:inline-block;padding:6px 12px;border-radius:999px;background:rgba(255,255,255,0.14);font-family:Arial,Helvetica,sans-serif;font-size:11px;letter-spacing:0.08em;text-transform:uppercase;">
+            <td style="padding:28px 28px 20px;background:#e91e8c;color:#ffffff;">
+              <img src="${escapeHtml(LOGO_URL)}" alt="${escapeHtml(APP_NAME)}" width="64" height="64" style="display:block;border-radius:12px;background:#ffffff;padding:4px;" />
+              <div style="margin-top:14px;font-family:Arial,Helvetica,sans-serif;font-size:11px;letter-spacing:0.22em;text-transform:uppercase;color:#ffffff;">Admin alert</div>
+              <div style="margin-top:10px;font-size:28px;line-height:1.1;font-weight:500;color:#ffffff;">New order received</div>
+              <div style="margin-top:14px;display:inline-block;padding:6px 12px;border-radius:999px;background:rgba(255,255,255,0.22);font-family:Arial,Helvetica,sans-serif;font-size:11px;letter-spacing:0.08em;text-transform:uppercase;color:#ffffff;">
                 Paid · #${escapeHtml(order.id)}
               </div>
             </td>

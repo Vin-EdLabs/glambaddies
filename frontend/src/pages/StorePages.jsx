@@ -9,7 +9,7 @@ import { ProductImageGallery } from '../ProductImageGallery'
 import { useAuth, useCart, useWishlist } from '../contexts'
 import api, { asArray, errorMessage, getProductCacheRev, mapProduct, mapProducts, resolveImageUrl, syncCatalogueRevision } from '../services/api'
 import { formatCurrency, groupCategories } from '../utils'
-import { DRESS_COLORS, DRESS_SIZES } from '../dressOptions'
+import { DRESS_COLORS, DRESS_SIZES, getColorQty, isColorInStock, normalizeColorStock } from '../dressOptions'
 
 const SITE_URL = String(import.meta.env.VITE_APP_URL || 'https://www.glambaddies.com').replace(/\/$/, '')
 
@@ -410,8 +410,15 @@ export function ProductDetail() {
   if (error) return <ErrorState retry={retry} />
   const images = asArray(product?.images).length ? asArray(product.images) : [product?.image].filter(Boolean)
   const productPath = `/products/${product.slug || product.id}`
+  const colorStock = normalizeColorStock(product.available_colors)
+  // null = older products (every colour open). Object = qty per colour (0 = sold out).
+  const restrictColors = colorStock != null
+  const isColorAvailable = (name) => isColorInStock(colorStock, name)
   const add = () => {
     if (!color) return toast.error('Please select a colour')
+    if (!isColorAvailable(color)) {
+      return toast.error(`${color} is sold out — pick another colour`, { id: `color-${color}` })
+    }
     if (!size) return toast.error('Please select a size')
     addItem(product, { size, color })
   }
@@ -437,21 +444,42 @@ export function ProductDetail() {
         ) : null}
         <p>{product.description}</p>
         <div className="option-block">
-          <div className="size-head"><strong>Colour</strong><span>{color || 'Select'}</span></div>
-          <div className="color-swatches" role="listbox" aria-label="Colour">
-            {DRESS_COLORS.map((item) => (
-              <button
-                type="button"
-                key={item.name}
-                title={item.name}
-                className={`color-swatch${item.pattern ? ' leopard' : ''}${color === item.name ? ' selected' : ''}`}
-                style={{ '--swatch': item.value }}
-                aria-label={item.name}
-                aria-selected={color === item.name}
-                onClick={() => setColor(item.name)}
-              />
-            ))}
+          <div className="size-head">
+            <strong>Colour</strong>
+            <span>{color ? (isColorAvailable(color) ? color : `${color} · sold out`) : 'Select'}</span>
           </div>
+          <div className="color-swatches" role="listbox" aria-label="Colour">
+            {DRESS_COLORS.map((item) => {
+              const available = isColorAvailable(item.name)
+              const qty = restrictColors ? getColorQty(colorStock, item.name) : null
+              return (
+                <button
+                  type="button"
+                  key={item.name}
+                  title={available ? (qty != null ? `${item.name} · ${qty} left` : item.name) : `${item.name} — sold out`}
+                  className={`color-swatch${item.pattern ? ' leopard' : ''}${color === item.name ? ' selected' : ''}${available ? '' : ' is-unavailable'}`}
+                  style={{ '--swatch': item.value }}
+                  aria-label={available ? item.name : `${item.name} sold out`}
+                  aria-selected={color === item.name}
+                  aria-disabled={!available}
+                  onClick={() => {
+                    if (!available) {
+                      toast.error(`${item.name} is sold out. Please choose another colour.`, { id: `color-${item.name}` })
+                      return
+                    }
+                    setColor(item.name)
+                  }}
+                />
+              )
+            })}
+          </div>
+          {restrictColors ? (
+            <p className="color-availability-hint">
+              {Object.values(colorStock).some((qty) => Number(qty) > 0)
+                ? 'Colours with a slash are sold out for this piece.'
+                : 'Every colour is sold out for this piece right now.'}
+            </p>
+          ) : null}
         </div>
         <div className="option-block">
           <div className="size-head"><strong>Size</strong><button type="button">Size guide</button></div>

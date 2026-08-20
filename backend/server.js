@@ -15,12 +15,20 @@ const allowedOrigins = [
   'https://www.glambaddies.com',
   'https://glambaddies.com',
   'http://localhost:5173',
+  'http://localhost:5174',
   'http://localhost:3000',
+  'http://127.0.0.1:5173',
+  'http://127.0.0.1:5174',
+  'http://127.0.0.1:3000',
 ];
 
 const corsOptions = {
   origin(origin, callback) {
     if (!origin || allowedOrigins.includes(origin)) {
+      return callback(null, true);
+    }
+    // Local Vite often hops ports (5173 → 5174…) when one is busy.
+    if (!isProd && /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin)) {
       return callback(null, true);
     }
     return callback(new Error('Not allowed by CORS'));

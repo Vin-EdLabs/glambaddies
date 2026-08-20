@@ -123,6 +123,11 @@ export const mapProduct = (product) => {
       || '',
     images,
     sizes: asArray(product.sizes),
+    available_colors: product.available_colors == null
+      ? null
+      : (typeof product.available_colors === 'object' && !Array.isArray(product.available_colors)
+        ? product.available_colors
+        : asArray(product.available_colors)),
     is_active: product.is_active !== false && product.is_active !== 'false' && product.is_active !== 0,
   }
 }

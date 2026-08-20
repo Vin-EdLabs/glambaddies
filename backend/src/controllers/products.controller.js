@@ -17,6 +17,7 @@ const PRODUCT_SELECT = `
          ROUND(p.price_cents / 100.0, 2) AS price,
          ${SALE_SELECT},
          p.stock, p.is_active, p.created_at, p.updated_at,
+         p.available_colors,
          c.id AS category_id, c.name AS category_name, c.slug AS category_slug,
          COALESCE(
            (SELECT json_agg(json_build_object('id', pi.id, 'url', pi.url, 'is_primary', pi.is_primary)

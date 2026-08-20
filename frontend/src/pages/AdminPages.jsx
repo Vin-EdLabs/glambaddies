@@ -6,6 +6,7 @@ import { EmptyState, ErrorState, LoadingGrid, CopyValue, ConfirmDialog, CancelRe
 import { useAuth } from '../contexts'
 import api, { asArray, bustProductCache, errorMessage, mapProduct, resolveImageUrl } from '../services/api'
 import { formatCurrency, groupCategories, orderStatusLabel } from '../utils'
+import { DRESS_COLORS, normalizeColorStock } from '../dressOptions'
 import { ADMIN_PATH } from '../adminPath'
 
 function SaleModal({ product, open, busy, onClose, onSave, onClear }) {
@@ -593,6 +594,7 @@ export function ProductForm() {
   const [newPrice, setNewPrice] = useState('')
   const [discountPercentInput, setDiscountPercentInput] = useState('20')
   const [saleBusy, setSaleBusy] = useState(false)
+  const [colorStock, setColorStock] = useState(() => Object.fromEntries(DRESS_COLORS.map((item) => [item.name, ''])))
   const { data, loading, error, retry, setData } = useAdminData(
     () => Promise.all([
       api.get('/glam-baddies/categories'),
@@ -634,6 +636,25 @@ export function ProductForm() {
       setDiscountMode('fixed')
     }
   }, [product?.id, product?.is_on_sale, product?.oldPrice, product?.price, product?.discount_percent])
+
+  useEffect(() => {
+    const blank = Object.fromEntries(DRESS_COLORS.map((item) => [item.name, '']))
+    if (!product) {
+      setColorStock(blank)
+      return
+    }
+    const stock = normalizeColorStock(product.available_colors)
+    if (stock == null) {
+      setColorStock(blank)
+      return
+    }
+    setColorStock({
+      ...blank,
+      ...Object.fromEntries(
+        Object.entries(stock).map(([name, qty]) => [name, String(qty)]),
+      ),
+    })
+  }, [product?.id, product?.available_colors])
 
   useEffect(() => {
     if (!discountOpen || discountMode !== 'percent') return
@@ -759,6 +780,18 @@ export function ProductForm() {
     if (files.length && (useNewAsMain || !id)) {
       form.set('primary_image_index', String(primaryNewIndex))
     }
+    form.delete('available_colors')
+    const stockPayload = {}
+    for (const [name, raw] of Object.entries(colorStock)) {
+      if (raw === '' || raw == null) continue
+      const qty = Number(raw)
+      if (!Number.isFinite(qty) || qty < 0) continue
+      stockPayload[name] = Math.floor(qty)
+    }
+    // Empty object still means "configured" (colours tracked, possibly all at 0).
+    // Blank every qty field = unrestricted (legacy: all colours open).
+    const anyFilled = Object.values(colorStock).some((value) => String(value).trim() !== '')
+    form.set('available_colors', anyFilled ? JSON.stringify(stockPayload) : '')
     try {
       const { data: saved } = await api({
         method: id ? 'put' : 'post',
@@ -1036,6 +1069,64 @@ export function ProductForm() {
           <section className="admin-card">
             <h2>Inventory</h2>
             <label>Quantity<input name="stock" type="number" min="0" step="1" required defaultValue={product?.stock ?? 0} /></label>
+          </section>
+          <section className="admin-card product-colors-card">
+            <div className="card-head">
+              <div>
+                <h2>Colour quantities</h2>
+                <p>Set how many pieces of each colour you have. Leave blank to skip a colour. Use 0 when that colour is finished — shoppers get a sold-out prompt.</p>
+              </div>
+            </div>
+            <div className="admin-color-actions">
+              <button
+                type="button"
+                className="admin-button"
+                onClick={() => setColorStock(Object.fromEntries(DRESS_COLORS.map((item) => [item.name, '1'])))}
+              >
+                Set all to 1
+              </button>
+              <button
+                type="button"
+                className="admin-button"
+                onClick={() => setColorStock(Object.fromEntries(DRESS_COLORS.map((item) => [item.name, ''])))}
+              >
+                Clear all
+              </button>
+              <span className="settings-hint">
+                {Object.values(colorStock).filter((value) => String(value).trim() !== '' && Number(value) > 0).length} in stock
+              </span>
+            </div>
+            <div className="admin-color-grid admin-color-grid--qty" role="group" aria-label="Colour quantities">
+              {DRESS_COLORS.map((item) => {
+                const qty = colorStock[item.name] ?? ''
+                const soldOut = qty !== '' && Number(qty) === 0
+                const active = qty !== '' && Number(qty) > 0
+                return (
+                  <label
+                    key={item.name}
+                    className={`admin-color-option admin-color-option--qty${active ? ' is-on' : ''}${soldOut ? ' is-sold-out' : ''}${item.pattern ? ' leopard' : ''}`}
+                  >
+                    <span className="admin-color-swatch" style={{ '--swatch': item.value }} aria-hidden="true" />
+                    <span className="admin-color-name">{item.name}</span>
+                    <input
+                      type="number"
+                      min="0"
+                      step="1"
+                      inputMode="numeric"
+                      placeholder="Qty"
+                      value={qty}
+                      onChange={(event) => {
+                        const next = event.target.value
+                        if (next !== '' && !/^\d+$/.test(next)) return
+                        setColorStock((current) => ({ ...current, [item.name]: next }))
+                      }}
+                      aria-label={`${item.name} quantity`}
+                    />
+                    {soldOut ? <small>Sold out</small> : null}
+                  </label>
+                )
+              })}
+            </div>
           </section>
           <section className="admin-card">
             <h2>Status</h2>
