@@ -84,6 +84,8 @@ Local frontend: `VITE_API_URL=/api` (Vite proxies to the API in development).
 
 Paystack charges are **GHS** at the catalogue price (pesewas). Webhook URL: `https://www.glambaddies.com/api/webhook/paystack`
 
+**Full payments guide** (shopper, admin, API, DB, webhook, Apple Pay, ops): [`docs/PAYMENTS.md`](docs/PAYMENTS.md)
+
 ## Ports
 
 | Service     | Port   | Notes                     |

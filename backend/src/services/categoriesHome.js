@@ -30,7 +30,15 @@ function defaultHomeFields(name, slug) {
   };
 }
 
+let homeColumnsEnsured = false;
+
+// Runs the (one-time) schema migration + legacy-data backfill below. This used to
+// run on every /api/categories request — several ALTER/SELECT/UPDATE round trips
+// per page load — which was the main source of the homepage feeling slow. It only
+// needs to happen once per server process; the flag makes every later call a no-op.
 async function ensureCategoryHomeColumns() {
+  if (homeColumnsEnsured) return;
+
   await db.query(`
     ALTER TABLE categories
       ADD COLUMN IF NOT EXISTS home_image_url TEXT,
@@ -118,6 +126,8 @@ async function ensureCategoryHomeColumns() {
   } catch {
     // store_settings may not exist yet on brand-new installs
   }
+
+  homeColumnsEnsured = true;
 }
 
 function mapCategoryHome(row) {

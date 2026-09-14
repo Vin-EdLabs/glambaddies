@@ -60,6 +60,38 @@ function useProductCacheRev() {
   return rev
 }
 
+/** Fades + slides an element in the first time it scrolls into view. */
+function useReveal(delayMs = 0) {
+  const ref = useRef(null)
+  const [visible, setVisible] = useState(false)
+  useEffect(() => {
+    const node = ref.current
+    if (!node) return undefined
+    if (typeof IntersectionObserver === 'undefined') {
+      setVisible(true)
+      return undefined
+    }
+    const observer = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          if (entry.isIntersecting) {
+            setVisible(true)
+            observer.unobserve(entry.target)
+          }
+        })
+      },
+      { threshold: 0.15, rootMargin: '0px 0px -8% 0px' },
+    )
+    observer.observe(node)
+    return () => observer.disconnect()
+  }, [])
+  return {
+    ref,
+    className: `reveal${visible ? ' reveal-in' : ''}`,
+    style: { '--reveal-delay': `${delayMs}ms` },
+  }
+}
+
 const HOME_CATEGORY_SHOWCASE = [
   {
     slug: 'casual-dresses',
@@ -117,6 +149,74 @@ function categorySectionCopy(category) {
   const title = String(category?.home_title || name).trim() || name
   const text = String(category?.description || '').trim()
   return { eyebrow, title, text }
+}
+
+function RevealItem({ as: Tag = 'div', delay = 0, className = '', children }) {
+  const reveal = useReveal(delay)
+  return (
+    <Tag ref={reveal.ref} className={`${reveal.className}${className ? ` ${className}` : ''}`} style={reveal.style}>
+      {children}
+    </Tag>
+  )
+}
+
+// No wrapper element — ProductCard must stay a direct child of .product-grid
+// (CSS like ".product-card:last-child" depends on real grid-item siblings).
+function RevealProductCard({ product, delay }) {
+  const reveal = useReveal(delay)
+  return <ProductCard product={product} cardRef={reveal.ref} className={reveal.className} style={reveal.style} />
+}
+
+function CategoryTile({ edit }) {
+  const reveal = useReveal(Math.min(edit.index * 70, 350))
+  return (
+    <Link
+      ref={reveal.ref}
+      className={`home-category-card ${reveal.className}`}
+      to={edit.to}
+      style={reveal.style}
+    >
+      <div className="home-category-card-media">
+        <img src={edit.image} alt={edit.alt} loading="lazy" />
+      </div>
+      <div className="home-category-card-copy">
+        <span>{edit.group}</span>
+        <h2>{edit.title}</h2>
+      </div>
+      <span className="home-category-card-arrow" aria-hidden="true">→</span>
+    </Link>
+  )
+}
+
+function CategorySection({ category }) {
+  const head = useReveal(0)
+  return (
+    <section className="section home-category">
+      <div ref={head.ref} className={`section-head home-category-head ${head.className}`} style={head.style}>
+        <div>
+          <span className="eyebrow">{category.eyebrow}</span>
+          <h2>{category.title}</h2>
+          {category.text ? <p className="home-category-copy">{category.text}</p> : null}
+        </div>
+        <Link className="browse-all" to={category.to}>
+          Shop all
+          <ArrowRight size={16} />
+        </Link>
+      </div>
+
+      <div className="product-grid home-category-products">
+        {category.products.map((product, index) => (
+          <RevealProductCard key={product.id} product={product} delay={Math.min(index * 80, 320)} />
+        ))}
+      </div>
+      <div className="home-category-foot">
+        <Link className="browse-all browse-all--solid" to={category.to}>
+          Shop all {category.eyebrow.toLowerCase()}
+          <ArrowRight size={16} />
+        </Link>
+      </div>
+    </section>
+  )
 }
 
 export function Home() {
@@ -234,24 +334,10 @@ export function Home() {
 
       {featureTiles.length ? (
         <section className="home-category-editorial" aria-label="Shop by category">
-          <p className="home-category-editorial-title">Shop by category</p>
+          <RevealItem as="p" className="home-category-editorial-title">Shop by category</RevealItem>
           <div className="home-category-grid">
             {featureTiles.map((edit) => (
-              <Link
-                className="home-category-card"
-                to={edit.to}
-                key={edit.key}
-                style={{ '--stagger': `${edit.index * 80}ms` }}
-              >
-                <div className="home-category-card-media">
-                  <img src={edit.image} alt={edit.alt} loading="lazy" />
-                </div>
-                <div className="home-category-card-copy">
-                  <span>{edit.group}</span>
-                  <h2>{edit.title}</h2>
-                </div>
-                <span className="home-category-card-arrow" aria-hidden="true">→</span>
-              </Link>
+              <CategoryTile edit={edit} key={edit.key} />
             ))}
           </div>
         </section>
@@ -267,36 +353,12 @@ export function Home() {
         </section>
       ) : (
         categories.map((category) => (
-          <section className="section home-category" key={category.key}>
-            <div className="section-head home-category-head">
-              <div>
-                <span className="eyebrow">{category.eyebrow}</span>
-                <h2>{category.title}</h2>
-                {category.text ? <p className="home-category-copy">{category.text}</p> : null}
-              </div>
-              <Link className="browse-all" to={category.to}>
-                Shop all
-                <ArrowRight size={16} />
-              </Link>
-            </div>
-
-            <div className="product-grid home-category-products">
-              {category.products.map((product) => (
-                <ProductCard product={product} key={product.id} />
-              ))}
-            </div>
-            <div className="home-category-foot">
-              <Link className="browse-all browse-all--solid" to={category.to}>
-                Shop all {category.eyebrow.toLowerCase()}
-                <ArrowRight size={16} />
-              </Link>
-            </div>
-          </section>
+          <CategorySection category={category} key={category.key} />
         ))
       )}
 
       <section className="home-shop-all" aria-label="Shop every dress">
-        <div className="home-shop-all-inner">
+        <RevealItem className="home-shop-all-inner">
           <span className="eyebrow">The full collection</span>
           <h2>Shop the collection</h2>
           <p>{collectionLine}</p>
@@ -304,7 +366,7 @@ export function Home() {
             Shop all
             <ArrowRight size={16} />
           </Link>
-        </div>
+        </RevealItem>
       </section>
 
       <section className="manifesto">

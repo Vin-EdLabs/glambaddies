@@ -107,8 +107,6 @@
   color: #fff;
   cursor: pointer;
   background: #1a1216;
-  animation: homeCatIn 500ms ease both;
-  animation-delay: var(--stagger, 0ms);
 }
 
 .home-category-card-media {
@@ -189,14 +187,29 @@
   transform: translateX(0);
 }
 
-@keyframes homeCatIn {
-  from {
-    opacity: 0;
-    transform: translateY(12px);
-  }
-  to {
+/* Scroll-triggered fly-in for the homepage category tiles / sections / product rows.
+   .reveal starts hidden+offset; .reveal-in (added by IntersectionObserver in
+   StorePages.jsx) plays the transition once, the first time each element scrolls
+   into view. */
+.reveal {
+  opacity: 0;
+  transform: translateY(32px) scale(0.98);
+  transition: opacity 700ms cubic-bezier(0.16, 0.84, 0.44, 1),
+    transform 700ms cubic-bezier(0.16, 0.84, 0.44, 1);
+  transition-delay: var(--reveal-delay, 0ms);
+  will-change: opacity, transform;
+}
+
+.reveal-in {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .reveal {
+    transition: none;
     opacity: 1;
-    transform: translateY(0);
+    transform: none;
   }
 }
 

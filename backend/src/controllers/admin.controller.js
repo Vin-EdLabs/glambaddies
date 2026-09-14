@@ -10,6 +10,15 @@ const { slugify, parsePagination, toCents } = require('../utils/helpers');
 const ORDER_STATUSES = ['pending', 'paid', 'shipped', 'out_for_delivery', 'delivered', 'cancelled'];
 const { ensureCatalogueExtras } = require('../services/catalogueExtras');
 
+// Removes a replaced category/homepage image from disk so uploads don't pile up
+// forever. Only ever targets our own /uploads/ files — never the bundled default
+// tile images (e.g. /edit-casual.jpg), which live in the frontend build.
+async function deleteUploadedFileIfUnused(url) {
+  if (!url || !String(url).includes('/uploads/')) return;
+  const filename = path.basename(String(url));
+  await fs.unlink(path.join(UPLOAD_DIR, filename)).catch(() => {});
+}
+
 async function ensureUserPhoneColumn() {
   await db.query(`
     ALTER TABLE users
@@ -506,6 +515,8 @@ exports.uploadHomepageFeatureImage = async (req, res, next) => {
        RETURNING *`,
       [imageUrl, target.id]
     );
+
+    await deleteUploadedFileIfUnused(target.home_image_url);
 
     const settings = await require('./store.controller').getSettingsRow();
     res.json({
@@ -1341,6 +1352,12 @@ exports.uploadCategoryHomeImage = async (req, res, next) => {
     }
 
     const imageUrl = `/uploads/${req.file.filename}`;
+    const { rows: previous } = await db.query(
+      'SELECT home_image_url FROM categories WHERE id = $1',
+      [id]
+    );
+    if (previous.length === 0) throw new ApiError(404, 'Category not found');
+
     const { rows } = await db.query(
       `UPDATE categories
        SET home_image_url = $1
@@ -1348,7 +1365,8 @@ exports.uploadCategoryHomeImage = async (req, res, next) => {
        RETURNING *`,
       [imageUrl, id]
     );
-    if (rows.length === 0) throw new ApiError(404, 'Category not found');
+
+    await deleteUploadedFileIfUnused(previous[0].home_image_url);
 
     res.json({
       category: mapCategoryHome(rows[0]),

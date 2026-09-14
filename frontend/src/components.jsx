@@ -56,14 +56,18 @@ export function PasswordInput({ name = 'password', minLength = 8, autoComplete =
   )
 }
 
-export function ProductCard({ product }) {
+export function ProductCard({ product, cardRef, className = '', style }) {
   const { addItem } = useCart()
   const wishlist = useWishlist()
   const [imageBroken, setImageBroken] = useState(false)
   const saved = Boolean(wishlist?.hasItem?.(product.id))
   // A product without a working photo looks unprofessional — drop the card entirely.
   if (imageBroken || !product.image) return null
-  return <article className={`product-card${product.is_on_sale ? ' is-on-sale' : ''}`}>
+  return <article
+    ref={cardRef}
+    className={`product-card${product.is_on_sale ? ' is-on-sale' : ''}${className ? ` ${className}` : ''}`}
+    style={style}
+  >
     <Link to={`/products/${product.slug || product.id}`} className="product-image">
       {product.badge ? <span className="badge sale-badge">{product.badge}</span> : null}
       <img src={product.image} alt={product.name} loading="lazy" onError={() => setImageBroken(true)} />

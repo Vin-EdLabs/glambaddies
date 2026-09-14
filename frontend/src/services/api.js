@@ -17,7 +17,8 @@ api.interceptors.request.use((config) => {
     if (token) config.headers.Authorization = `Bearer ${token}`
   }
   // Bust browser/proxy caches for catalogue reads.
-  if (String(config.method || 'get').toLowerCase() === 'get' && String(config.url || '').startsWith('/products')) {
+  const url = String(config.url || '')
+  if (String(config.method || 'get').toLowerCase() === 'get' && (url.startsWith('/products') || url.startsWith('/categories'))) {
     config.headers['Cache-Control'] = 'no-cache'
     config.headers.Pragma = 'no-cache'
     config.params = { ...(config.params || {}), _ts: Date.now() }
