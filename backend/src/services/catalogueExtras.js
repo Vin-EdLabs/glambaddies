@@ -31,20 +31,23 @@ async function ensureCatalogueExtras() {
     /* constraint may already match */
   }
 
+  // The Bags/Shoes/Beauty categories were a one-time backfill for stores created
+  // before those categories existed. This used to run "INSERT ... WHERE NOT EXISTS"
+  // on every server start, which meant deleting one of these categories in admin
+  // only lasted until the next deploy/restart — the next boot saw it "missing" and
+  // silently recreated it. That backfill has already run in production, so it no
+  // longer inserts anything here — a deletion in admin is now final. (A brand new
+  // install can still add these, or any category, from Admin → Categories.)
   await db.query(`
-    INSERT INTO categories (name, slug, description)
-    SELECT 'Bags', 'bags', 'Handbags, mini bags and glam essentials'
-    WHERE NOT EXISTS (SELECT 1 FROM categories WHERE slug = 'bags')
+    CREATE TABLE IF NOT EXISTS category_seed_log (
+      slug TEXT PRIMARY KEY,
+      seeded_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
   `);
   await db.query(`
-    INSERT INTO categories (name, slug, description)
-    SELECT 'Shoes', 'shoes', 'Shoes and heels for every glam moment'
-    WHERE NOT EXISTS (SELECT 1 FROM categories WHERE slug = 'shoes')
-  `);
-  await db.query(`
-    INSERT INTO categories (name, slug, description)
-    SELECT 'Beauty & Accessories', 'beauty', 'Sunglasses, makeup, jewellery and girls tiny essentials'
-    WHERE NOT EXISTS (SELECT 1 FROM categories WHERE slug = 'beauty')
+    INSERT INTO category_seed_log (slug)
+    VALUES ('bags'), ('shoes'), ('beauty')
+    ON CONFLICT (slug) DO NOTHING
   `);
 
   // Homepage tile images for accessory categories (replaceable anytime in admin)

@@ -237,19 +237,23 @@ export function Home() {
         try { localStorage.setItem('glam_products_rev', String(revision)) } catch { /* ignore */ }
       }
 
-      const bySlug = Object.fromEntries(allCategories.map((category) => [category.slug, category]))
-      const features = HOME_CATEGORY_SHOWCASE.map((item) => {
-        const live = bySlug[item.slug]
+      const showcaseBySlug = Object.fromEntries(HOME_CATEGORY_SHOWCASE.map((item) => [item.slug, item]))
+      // Built from the live categories, never from the fixed showcase list — a
+      // deleted category must not keep a tile just because it used to be one of
+      // the launch defaults. The showcase entry (if any) only supplies cosmetic
+      // fallbacks — group label / stock photo — for a category that still exists.
+      const features = allCategories.map((category) => {
+        const showcase = showcaseBySlug[category.slug]
         return {
-          id: live ? `category-${live.id}` : `showcase-${item.slug}`,
-          category_id: live?.id,
-          category_slug: item.slug,
-          group: item.group,
-          eyebrow: live?.home_eyebrow || item.eyebrow,
-          title: live?.home_title || item.title,
-          image_url: live?.home_image_url || item.image,
+          id: `category-${category.id}`,
+          category_id: category.id,
+          category_slug: category.slug,
+          group: showcase?.group || category.name,
+          eyebrow: category.home_eyebrow || showcase?.eyebrow || category.name,
+          title: category.home_title || showcase?.title || category.name,
+          image_url: category.home_image_url || showcase?.image || '',
         }
-      })
+      }).filter((feature) => feature.image_url)
 
       const sections = allCategories
         .map((category, index) => {
@@ -278,8 +282,10 @@ export function Home() {
 
   const categories = asArray(data?.sections)
 
-  // Always show category tiles (even while catalogue rows load / on API error).
-  const featureSource = asArray(data?.features).length
+  // Static tiles only stand in before the first successful load / on API error —
+  // once real data has loaded, an empty list means "no categories" and should
+  // render as empty, not silently show demo tiles for categories that don't exist.
+  const featureSource = data
     ? asArray(data.features)
     : HOME_CATEGORY_SHOWCASE.map((item) => ({
         category_slug: item.slug,
